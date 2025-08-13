@@ -158,5 +158,140 @@ uv run isort .
 uv run flake8
 ```
 
+### Development Dependencies
+
+The project includes several development tools:
+- **django-debug-toolbar**: Debug information in browser
+- **django-extensions**: Additional Django management commands
+- **ipython**: Enhanced Python shell
+- **pytest**: Testing framework
+- **black**: Code formatter
+- **isort**: Import sorter
+- **flake8**: Code linter
+
+---
+
+## Configuration
+
+### Environment Variables
+
+Key environment variables (see `.env.example`):
+
+**Required:**
+- `SECRET_KEY`: Django secret key for security
+- `OPENAI_API_KEY`: OpenAI API key for transcription service
+
+**Database:**
+- `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`: Database configuration
+
+**Audio Processing:**
+- `MAX_AUDIO_FILE_SIZE`: Maximum file size for uploads (default: 20MB)
+- `OPENAI_CALL_TIMEOUT`: Timeout for OpenAI API calls (default: 600s)
+
+**Optional Speaker Detection:**
+- `SPEAKER_DETECTION_HOST`: Host for speaker detection service
+- `SPEAKER_DETECTION_PORT`: Port for speaker detection service
+
+**General:**
+- `DEBUG`: Enable/disable debug mode
+- `ALLOWED_HOSTS`: Comma-separated list of allowed hosts
+
+---
+
+### Audio File Settings
+
+- **Supported formats**: MP3, MP4, MPEG, MPGA, M4A, WAV, WebM, OGG, Opus, AAC, FLAC
+- **Max file size**: 20MB (files larger than this are automatically segmented)
+- **Max duration**: 8 minutes (longer files are automatically segmented)
+- **Auto-conversion**: Non-native formats automatically converted to MP3
+- **Storage**: Local filesystem under `media/audio/`
+- **Intelligence**: Optimal split points detected using silence analysis
+
+---
+
+## Project Structure
+
+```
+ai-scriber/
+├── config/ # Django project configuration
+│ ├── settings/ # Environment-specific settings
+│ ├── urls.py # Main URL configuration
+│ ├── wsgi.py # WSGI configuration
+│ └── asgi.py # ASGI configuration
+├── apps/ # Django applications
+│ ├── core/ # Shared utilities and base classes
+│ ├── accounts/ # User authentication
+│ └── transcription/ # Audio transcription functionality
+├── media/ # User uploaded files
+├── static/ # Static files (CSS, JS, images)
+├── templates/ # HTML templates
+├── requirements/ # Legacy requirements files
+├── tests/ # Project-wide tests
+├── docker-compose.yml # Docker services configuration
+├── Dockerfile # Docker container definition
+├── pyproject.toml # Project dependencies and metadata
+└── manage.py # Django management script
+```
 
 
+---
+
+## Advanced Features
+
+### Speaker Detection Integration
+
+AI Scriber supports optional integration with external speaker detection services:
+
+1. **Configuration**: Set `SPEAKER_DETECTION_HOST` and `SPEAKER_DETECTION_PORT` environment variables
+2. **Health Check**: Service availability is checked on startup
+3. **Automatic Processing**: After transcription, audio and timestamps are sent for speaker separation
+4. **Enhanced Output**: Transcriptions are updated with speaker labels and segments
+
+**API Integration:**
+- `GET /healthcheck` - Service health check
+- `POST /speaker-detection` - Process audio file with timestamps
+
+---
+
+### Audio Processing Intelligence
+
+- **Format Detection**: Automatically detects and converts non-native formats using FFmpeg
+- **Smart Segmentation**: Files >20MB or >8min are intelligently split at optimal points
+- **Silence Detection**: Uses librosa and pydub to find natural speech boundaries
+- **Quality Optimization**: Converts to 16kHz mono MP3 for optimal OpenAI processing
+
+---
+
+## Deployment
+
+### Production Deployment
+
+1. Set environment variables for production
+2. Use PostgreSQL database
+3. Configure static file serving
+4. Set up reverse proxy (nginx)
+5. Use gunicorn as WSGI server
+
+### Docker Production
+
+```bash
+# Build production image
+docker build -t ai-scriber:latest .
+
+# Run with production settings
+docker run -p 8080:8080 --env-file .env ai-scriber:latest
+```
+
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests: `uv run pytest`
+5. Format code: `uv run black . && uv run isort .`
+6. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
