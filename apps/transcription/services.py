@@ -112,13 +112,19 @@ class TranscriptionService:
                             # Adjust word timestamps to match the full audio timeline
                             if hasattr(segment_response, 'words') and segment_response.words:
                                 for word in segment_response.words:
-                                    adjusted_word = {
-                                        'word': word.word if hasattr(word, 'word') else word.get('word', ''),
-                                        'start': (word.start if hasattr(word, 'start') else word.get('start', 0.0)) + segment_start_time,
-                                        'end': (word.end if hasattr(word, 'end') else word.get('end', 0.0)) + segment_start_time,
-                                        'confidence': word.confidence if hasattr(word, 'confidence') else word.get('confidence', 1.0)
-                                    }
-                                    all_words.append(adjusted_word)
+                                    # Handle OpenAI word objects (they have attributes, not dict keys)
+                                    try:
+                                        adjusted_word = {
+                                            'word': getattr(word, 'word', ''),
+                                            'start': getattr(word, 'start', 0.0) + segment_start_time,
+                                            'end': getattr(word, 'end', 0.0) + segment_start_time,
+                                            'confidence': getattr(word, 'confidence', 1.0)
+                                        }
+                                        all_words.append(adjusted_word)
+                                    except Exception as word_error:
+                                        logger.warning(f"Error processing word in segment {segment_idx}: {str(word_error)}")
+                                        # Skip this word and continue with others
+                                        continue
                             
                             # Get language from first segment
                             if segment_idx == 0:
@@ -568,16 +574,107 @@ class TranscriptionService:
                 # Detect format from file extension
                 file_extension = audio_file.original_filename.split('.')[-1].lower()
                 
-                # Load audio with appropriate format
+                # Load audio with appropriate format and error handling
                 if file_extension in ['ogg', 'oga']:
-                    audio = AudioSegment.from_ogg(file)
+                    try:
+                        audio = AudioSegment.from_ogg(file)
+                    except Exception:
+                        # Fallback for OGG files that might contain Opus
+                        audio = AudioSegment.from_file(file)
                 elif file_extension == 'flac':
                     audio = AudioSegment.from_file(file, format='flac')
                 elif file_extension in ['aac']:
                     audio = AudioSegment.from_file(file, format='aac')
                 elif file_extension == 'opus':
-                    # Opus files are typically in WebM or OGG containers
-                    audio = AudioSegment.from_file(file, format='opus')
+                    # Opus files can be in different containers, try multiple approaches
+                    logger.info(f"Processing Opus file: {audio_file.original_filename}")
+                    opus_errors = []
+                    
+                    # Try different approaches in order of likelihood
+                    approaches = [
+                        ("generic format", lambda f: AudioSegment.from_file(f)),
+                        ("explicit opus codec", lambda f: AudioSegment.from_file(f, format='opus')),
+                        ("ogg container", lambda f: AudioSegment.from_file(f, format='ogg')),
+                        ("webm container", lambda f: AudioSegment.from_file(f, format='webm')),
+                        ("raw opus with codec params", lambda f: AudioSegment.from_file(f, codec='libopus')),
+                    ]
+                    
+                    audio = None
+                    for approach_name, approach_func in approaches:
+                        try:
+                            logger.debug(f"Trying Opus file loading with {approach_name}")
+                            audio = approach_func(file)
+                            logger.info(f"Successfully loaded Opus file using {approach_name}")
+                            break
+                        except Exception as e:
+                            error_msg = str(e)
+                            opus_errors.append(f"{approach_name}: {error_msg}")
+                            logger.debug(f"Failed with {approach_name}: {error_msg}")
+                            continue
+                    
+                    if audio is None:
+                        # Last resort: try ffmpeg direct conversion to a temporary WAV file
+                        logger.info("Attempting ffmpeg direct conversion as last resort")
+                        try:
+                            import subprocess
+                            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_wav:
+                                # Create a temporary input file since we have a file-like object
+                                with tempfile.NamedTemporaryFile(suffix=f'.{file_extension}', delete=False) as temp_input:
+                                    # Copy the file content to a temporary file for ffmpeg
+                                    file.seek(0)
+                                    temp_input.write(file.read())
+                                    temp_input.flush()
+                                    
+                                    # Use ffmpeg to convert directly
+                                    cmd = [
+                                        'ffmpeg', '-i', temp_input.name, 
+                                        '-acodec', 'pcm_s16le',  # Standard WAV codec
+                                        '-ar', '16000',  # 16kHz sample rate
+                                        '-ac', '1',  # Mono
+                                        '-y',  # Overwrite output
+                                        temp_wav.name
+                                    ]
+                                
+                                result = subprocess.run(
+                                    cmd, 
+                                    capture_output=True, 
+                                    text=True, 
+                                    timeout=60
+                                )
+                                
+                                if result.returncode == 0:
+                                    # Load the converted WAV file
+                                    audio = AudioSegment.from_wav(temp_wav.name)
+                                    logger.info("Successfully converted Opus to WAV using direct ffmpeg")
+                                else:
+                                    logger.error(f"FFmpeg conversion failed: {result.stderr}")
+                                    raise Exception(f"FFmpeg error: {result.stderr}")
+                                    
+                        except Exception as ffmpeg_error:
+                            opus_errors.append(f"ffmpeg direct conversion: {str(ffmpeg_error)}")
+                            logger.error(f"FFmpeg fallback also failed: {str(ffmpeg_error)}")
+                        finally:
+                            # Clean up temp files
+                            if 'temp_wav' in locals() and os.path.exists(temp_wav.name):
+                                try:
+                                    os.unlink(temp_wav.name)
+                                except:
+                                    pass
+                            if 'temp_input' in locals() and os.path.exists(temp_input.name):
+                                try:
+                                    os.unlink(temp_input.name)
+                                except:
+                                    pass
+                    
+                    if audio is None:
+                        # All approaches including ffmpeg failed
+                        logger.error(f"All Opus decoding approaches failed for {audio_file.original_filename}")
+                        detailed_errors = "\n".join([f"  • {err}" for err in opus_errors])
+                        raise TranscriptionError(
+                            f"Unable to decode Opus file '{audio_file.original_filename}'. "
+                            f"This may be due to an unsupported Opus container format or corrupted file. "
+                            f"Try converting the file to MP3 format first.\n\nDetailed errors:\n{detailed_errors}"
+                        )
                 elif file_extension == 'wav':
                     audio = AudioSegment.from_wav(file)
                 else:

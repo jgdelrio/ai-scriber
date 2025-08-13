@@ -10,11 +10,7 @@
 <div class="dashboard-content">
     <div class="upload-section">
         <div class="header">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <div>
-                    <h1>🎙️ AI Scriber</h1>
-                    <p>Welcome, {{ user.first_name }}!</p>
-                </div>
+            <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 1rem;">
                 <div style="display: flex; align-items: center; gap: 0.5rem;">
                     <span style="font-size: 0.9rem; color: #666;">🌙 Dark Mode</span>
                     <label class="dark-mode-toggle">
@@ -22,6 +18,10 @@
                         <span class="slider"></span>
                     </label>
                 </div>
+            </div>
+            <div style="margin-bottom: 1rem;">
+                <h1>🎙️ AI Scriber</h1>
+                <p>Welcome, {{ user.first_name }}!</p>
             </div>
         </div>
     <h2 style="color: #333; margin-bottom: 1rem;">Upload Audio Files</h2>
@@ -170,6 +170,16 @@ body.dark-mode a:hover {
     color: #29b6f6;
 }
 
+/* Fix label visibility in dark mode */
+body.dark-mode label {
+    color: #e0e0e0 !important;
+}
+
+/* Fix selected files text visibility */
+body.dark-mode span[style*="color: #333"] {
+    color: #e0e0e0 !important;
+}
+
 /* Dark Mode Toggle Switch */
 .dark-mode-toggle {
     position: relative;
@@ -222,6 +232,11 @@ body.dark-mode .slider {
 
 body.dark-mode input:checked + .slider {
     background-color: #4fc3f7;
+}
+
+/* Fix dark mode toggle label color */
+body.dark-mode span[style*="color: #666"] {
+    color: #b0b0b0 !important;
 }
 </style>
 
@@ -314,7 +329,7 @@ function updateFormatDisplays() {
     // Update the drop zone display
     const formatDisplay = document.querySelector('#dropContent p[style*="color: #999"]');
     if (formatDisplay) {
-        formatDisplay.textContent = `Supported formats: ${SUPPORTED_FORMATS.displayList} (Max: ${SUPPORTED_FORMATS.maxFileSizeMB}MB)`;
+        formatDisplay.textContent = `Supported formats: ${SUPPORTED_FORMATS.displayList}`;
     }
     
     // Update file input accept attribute
