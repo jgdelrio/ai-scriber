@@ -68,6 +68,7 @@
         <button type="button" id="transcribeAllBtn" class="btn" style="margin-bottom: 0.5rem;">Transcribe All</button>
         <button type="button" id="selectAllBtn" class="btn" style="background: #666; margin-bottom: 0.5rem;">Select All</button>
         <button type="button" id="deselectAllBtn" class="btn" style="background: #666; margin-bottom: 0.5rem;">Deselect All</button>
+        <button type="button" id="deleteAllBtn" class="btn" style="background: #dc3545; margin-bottom: 0.5rem;">🗑️ Delete All Files</button>
     </div>
     
     <div class="links" style="margin-top: 2rem;">
@@ -126,6 +127,14 @@ body.dark-mode .btn {
     background-color: #007cba;
     color: white;
     border-color: #007cba;
+}
+
+body.dark-mode span[onclick*="downloadTranscription"] {
+    color: #4fc3f7 !important;
+}
+
+body.dark-mode span[onclick*="openAudioPlayer"] {
+    color: #66bb6a !important;
 }
 
 body.dark-mode .btn:hover {
@@ -431,7 +440,10 @@ function displayAudioFiles(files) {
                 <div style="display: flex; align-items: center;">
                     ${!file.transcription ? `<input type="checkbox" class="file-checkbox" value="${file.id}" style="margin-right: 0.5rem;">` : ''}
                     <h3 style="margin: 0; color: #333;">${file.original_filename}</h3>
-                    ${file.transcription ? `<span style="margin-left: 1rem; color: #28a745; font-size: 0.9rem; cursor: pointer; text-decoration: underline;" onclick="openAudioPlayer(${file.id})">🎵 Open audio player and full transcription</span>` : ''}
+                    ${file.transcription ? `
+                        <span style="margin-left: 1rem; color: #28a745; font-size: 0.9rem; cursor: pointer; text-decoration: underline;" onclick="openAudioPlayer(${file.id})">🎵 Open audio player and full transcription</span>
+                        <span style="margin-left: 1rem; color: #007cba; font-size: 0.9rem; cursor: pointer; text-decoration: underline;" onclick="downloadTranscription(${file.id}, '${file.original_filename.replace(/'/g, "\\'")}')">📄 Download transcription</span>
+                    ` : ''}
                 </div>
                 <div style="display: flex; align-items: center; gap: 0.5rem;">
                     ${file.status === 'ready' && !file.transcription ? 
@@ -466,6 +478,7 @@ function setupTranscriptionControls() {
     document.getElementById('transcribeAllBtn').addEventListener('click', transcribeAll);
     document.getElementById('selectAllBtn').addEventListener('click', selectAll);
     document.getElementById('deselectAllBtn').addEventListener('click', deselectAll);
+    document.getElementById('deleteAllBtn').addEventListener('click', deleteAllFiles);
 }
 
 function selectAll() {
@@ -482,6 +495,46 @@ function getSelectedFileIds() {
 
 function openAudioPlayer(fileId) {
     window.location.href = `/audio-player/${fileId}/`;
+}
+
+async function downloadTranscription(fileId, filename) {
+    try {
+        const response = await fetch(`/api/v1/transcription/files/${fileId}/transcription/`, {
+            headers: {
+                'Authorization': 'Token ' + localStorage.getItem('authToken')
+            }
+        });
+        
+        if (response.ok) {
+            const transcriptionData = await response.json();
+            
+            // Create downloadable text content
+            const textContent = `Transcription for: ${filename}\n` +
+                               `Generated on: ${new Date().toLocaleString()}\n` +
+                               `Language: ${transcriptionData.language || 'Auto-detected'}\n` +
+                               `Confidence Score: ${transcriptionData.confidence_score ? (transcriptionData.confidence_score * 100).toFixed(1) + '%' : 'N/A'}\n` +
+                               `Processing Time: ${transcriptionData.processing_time ? transcriptionData.processing_time.toFixed(2) + 's' : 'N/A'}\n\n` +
+                               `--- TRANSCRIPTION ---\n\n${transcriptionData.text}`;
+            
+            // Create and trigger download
+            const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${filename.replace(/\.[^/.]+$/, '')}_transcription.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            
+        } else {
+            const errorData = await response.json();
+            alert(`Failed to download transcription: ${errorData.error || 'Unknown error'}`);
+        }
+    } catch (error) {
+        console.error('Download error:', error);
+        alert('Failed to download transcription. Please try again.');
+    }
 }
 
 async function transcribeSelected() {
@@ -631,6 +684,70 @@ async function deleteFile(fileId, filename) {
     } catch (error) {
         console.error('Delete error:', error);
         alert('Failed to delete file. Please try again.');
+    }
+}
+
+async function deleteAllFiles() {
+    if (uploadedFiles.length === 0) {
+        alert('No files to delete.');
+        return;
+    }
+    
+    const confirmMessage = `⚠️ WARNING: DELETE ALL FILES\n\nThis will permanently delete ALL ${uploadedFiles.length} audio files and their transcriptions.\n\nThis action cannot be undone!\n\nType "DELETE ALL" to confirm:`;
+    const userInput = prompt(confirmMessage);
+    
+    if (userInput !== 'DELETE ALL') {
+        alert('Delete operation cancelled. Files were not deleted.');
+        return;
+    }
+    
+    const deleteBtn = document.getElementById('deleteAllBtn');
+    const originalText = deleteBtn.textContent;
+    deleteBtn.textContent = 'Deleting...';
+    deleteBtn.disabled = true;
+    
+    let successCount = 0;
+    let failureCount = 0;
+    
+    try {
+        for (const file of uploadedFiles) {
+            try {
+                const response = await fetch(`/api/v1/transcription/files/${file.id}/`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': 'Token ' + localStorage.getItem('authToken'),
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    successCount++;
+                } else {
+                    failureCount++;
+                    console.error(`Failed to delete file ${file.original_filename}`);
+                }
+            } catch (error) {
+                failureCount++;
+                console.error(`Error deleting file ${file.original_filename}:`, error);
+            }
+            
+            // Update progress
+            deleteBtn.textContent = `Deleting... (${successCount + failureCount}/${uploadedFiles.length})`;
+        }
+        
+        // Refresh the file list
+        await loadAudioFiles();
+        
+        // Show summary
+        if (failureCount === 0) {
+            alert(`✅ Successfully deleted all ${successCount} files.`);
+        } else {
+            alert(`⚠️ Delete completed:\n- Successfully deleted: ${successCount} files\n- Failed to delete: ${failureCount} files\n\nPlease check the console for details about failed deletions.`);
+        }
+        
+    } finally {
+        deleteBtn.textContent = originalText;
+        deleteBtn.disabled = false;
     }
 }
 

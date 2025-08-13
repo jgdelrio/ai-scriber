@@ -70,7 +70,174 @@
     </div>
 </div>
 
+<style>
+/* Dark Mode Styles for Audio Player */
+body.dark-mode {
+    background-color: #1a1a1a;
+    color: #e0e0e0;
+}
+
+body.dark-mode h1, 
+body.dark-mode h2 {
+    color: #e0e0e0 !important;
+}
+
+body.dark-mode p {
+    color: #b0b0b0 !important;
+}
+
+body.dark-mode #audioPlayerSection {
+    background-color: #2d2d2d !important;
+    border-color: #404040;
+}
+
+body.dark-mode div[style*="background: white"] {
+    background-color: #2d2d2d !important;
+    border-color: #555 !important;
+    color: #e0e0e0 !important;
+}
+
+body.dark-mode #transcriptionContainer {
+    background-color: #2d2d2d !important;
+    color: #e0e0e0 !important;
+}
+
+body.dark-mode #transcriptionContainer .editable-word {
+    color: #e0e0e0 !important;
+}
+
+body.dark-mode div[style*="padding: 2rem"] {
+    background-color: #1a1a1a !important;
+}
+
+body.dark-mode .dashboard-container {
+    background: #1a1a1a !important;
+}
+
+body.dark-mode {
+    background: #1a1a1a !important;
+}
+
+body.dark-mode .btn {
+    background-color: #007cba;
+    color: white;
+    border-color: #007cba;
+}
+
+body.dark-mode .btn:hover {
+    background-color: #005a8a;
+}
+
+body.dark-mode a {
+    color: #4fc3f7;
+}
+
+body.dark-mode a:hover {
+    color: #29b6f6;
+}
+
+body.dark-mode .editable-word:hover {
+    background-color: #3d3d3d !important;
+}
+
+body.dark-mode .editable-word:focus {
+    background-color: #1e3a5f !important;
+    outline: 2px solid #4fc3f7 !important;
+}
+
+body.dark-mode .current-word {
+    background-color: #f39c12 !important;
+    color: #1a1a1a !important;
+}
+
+body.dark-mode .spoken-word {
+    color: #999 !important;
+}
+
+body.dark-mode .unsaved-word {
+    background-color: #4a3f2a !important;
+    border-color: #f39c12 !important;
+}
+
+/* Dark Mode Toggle Switch */
+.dark-mode-toggle {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.dark-mode-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 24px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: #007cba;
+}
+
+input:checked + .slider:before {
+    transform: translateX(26px);
+}
+
+body.dark-mode .slider {
+    background-color: #555;
+}
+
+body.dark-mode input:checked + .slider {
+    background-color: #4fc3f7;
+}
+</style>
+
 <script>
+// Dark mode functionality
+function initDarkMode() {
+    const darkModeToggle = document.getElementById('darkModeToggle');
+    const isDarkMode = localStorage.getItem('darkMode') === 'true';
+    
+    // Set initial state
+    if (isDarkMode) {
+        document.body.classList.add('dark-mode');
+        darkModeToggle.checked = true;
+    }
+    
+    // Toggle dark mode
+    darkModeToggle.addEventListener('change', function() {
+        if (this.checked) {
+            document.body.classList.add('dark-mode');
+            localStorage.setItem('darkMode', 'true');
+        } else {
+            document.body.classList.remove('dark-mode');
+            localStorage.setItem('darkMode', 'false');
+        }
+    });
+}
+
 // Audio player functionality
 const audioPlayer = document.getElementById('audioPlayer');
 const playPauseBtn = document.getElementById('playPauseBtn');
@@ -384,6 +551,9 @@ function stopAutoSave() {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize dark mode
+    initDarkMode();
+    
     // Create editable transcription
     createEditableTranscription();
     
