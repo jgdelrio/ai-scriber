@@ -31,7 +31,7 @@ def validate_audio_file(file):
 
     # Check file format
     ext = get_file_extension(file.name)[1:]  # Remove the dot
-    if ext not in settings.ALLOWED_AUDIO_FORMATS:
+    if ext not in settings.SUPPORTED_AUDIO_FORMATS:
         raise UnsupportedAudioFormat(f"Unsupported format: {ext}")
 
     return True

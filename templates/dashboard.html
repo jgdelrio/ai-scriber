@@ -30,7 +30,8 @@
     <div id="dropZone" style="border: 2px dashed #ddd; border-radius: 10px; padding: 2rem; text-align: center; margin-bottom: 1rem; background: #f9f9f9; transition: all 0.3s;">
         <div id="dropContent">
             <p style="color: #666; font-size: 1.1rem; margin-bottom: 1rem;">📁 Drop audio files here or click to browse</p>
-            <input type="file" id="fileInput" multiple accept="audio/*" style="display: none;">
+            <p style="color: #999; font-size: 0.9rem; margin-bottom: 1rem;">Loading supported formats...</p>
+            <input type="file" id="fileInput" multiple style="display: none;">
             <button type="button" id="browseBtn" class="btn" style="margin-bottom: 1rem;">Choose Files</button>
         </div>
     </div>
@@ -109,6 +110,10 @@ body.dark-mode h3 {
 
 body.dark-mode p {
     color: #b0b0b0 !important;
+}
+
+body.dark-mode p[style*="color: #999"] {
+    color: #888 !important;
 }
 
 body.dark-mode #dropZone {
@@ -230,6 +235,120 @@ if (authToken) {
 // Global variables
 let selectedFiles = [];
 let uploadedFiles = [];
+let SUPPORTED_FORMATS = {
+    extensions: [],
+    mimeTypes: [],
+    displayList: '',
+    maxFileSize: 0,
+    maxFileSizeMB: 0
+};
+
+function isValidAudioFile(file) {
+    // Check file size first
+    if (SUPPORTED_FORMATS.maxFileSize > 0 && file.size > SUPPORTED_FORMATS.maxFileSize) {
+        return { valid: false, reason: 'size', sizeMB: Math.round(file.size / (1024 * 1024)) };
+    }
+    
+    // Check MIME type first
+    if (file.type && SUPPORTED_FORMATS.mimeTypes.includes(file.type)) {
+        return { valid: true };
+    }
+    
+    // Check file extension as fallback
+    const extension = file.name.split('.').pop().toLowerCase();
+    if (SUPPORTED_FORMATS.extensions.includes(extension)) {
+        return { valid: true };
+    }
+    
+    return { valid: false, reason: 'format' };
+}
+
+async function loadSupportedFormats() {
+    try {
+        const response = await fetch('/api/v1/transcription/supported-formats/');
+        if (response.ok) {
+            const data = await response.json();
+            
+            // Update supported formats
+            SUPPORTED_FORMATS.extensions = data.formats;
+            SUPPORTED_FORMATS.maxFileSize = data.max_file_size;
+            SUPPORTED_FORMATS.maxFileSizeMB = data.max_file_size_mb;
+            
+            // Generate MIME types from extensions
+            const mimeTypeMap = {
+                'mp3': 'audio/mpeg',
+                'mp4': 'audio/mp4', 
+                'mpeg': 'audio/mpeg',
+                'mpga': 'audio/mpeg',
+                'm4a': 'audio/x-m4a',
+                'wav': 'audio/wav',
+                'webm': 'audio/webm',
+                'ogg': 'audio/ogg',
+                'opus': 'audio/opus',
+                'aac': 'audio/aac',
+                'flac': 'audio/flac'
+            };
+            
+            SUPPORTED_FORMATS.mimeTypes = data.formats.map(ext => mimeTypeMap[ext]).filter(Boolean);
+            
+            // Create display list (uppercase for better readability)
+            SUPPORTED_FORMATS.displayList = data.formats.map(ext => ext.toUpperCase()).join(', ');
+            
+            // Update UI elements
+            updateFormatDisplays();
+            
+            console.log('Loaded supported formats:', SUPPORTED_FORMATS);
+        } else {
+            console.error('Failed to load supported formats, using defaults');
+            // Fallback to basic formats
+            SUPPORTED_FORMATS.extensions = ['mp3', 'wav', 'm4a'];
+            SUPPORTED_FORMATS.displayList = 'MP3, WAV, M4A';
+            SUPPORTED_FORMATS.maxFileSizeMB = 100;
+        }
+    } catch (error) {
+        console.error('Error loading supported formats:', error);
+    }
+}
+
+function updateFormatDisplays() {
+    // Update the drop zone display
+    const formatDisplay = document.querySelector('#dropContent p[style*="color: #999"]');
+    if (formatDisplay) {
+        formatDisplay.textContent = `Supported formats: ${SUPPORTED_FORMATS.displayList} (Max: ${SUPPORTED_FORMATS.maxFileSizeMB}MB)`;
+    }
+    
+    // Update file input accept attribute
+    const fileInput = document.getElementById('fileInput');
+    if (fileInput) {
+        const acceptString = SUPPORTED_FORMATS.extensions.map(ext => `.${ext}`).join(',') + ',' +
+                            SUPPORTED_FORMATS.mimeTypes.join(',');
+        fileInput.setAttribute('accept', acceptString);
+    }
+}
+
+function showFormatError(rejectedFiles) {
+    const formatIssues = rejectedFiles.filter(r => r.reason === 'format');
+    const sizeIssues = rejectedFiles.filter(r => r.reason === 'size');
+    
+    let message = `❌ File validation failed!\n\n`;
+    
+    if (formatIssues.length > 0) {
+        const formatFileNames = formatIssues.map(r => r.file.name).join(', ');
+        message += `🚫 Unsupported format:\n${formatFileNames}\n\n`;
+    }
+    
+    if (sizeIssues.length > 0) {
+        const sizeDetails = sizeIssues.map(r => `${r.file.name} (${r.sizeMB}MB)`).join(', ');
+        message += `📏 File too large:\n${sizeDetails}\n\n`;
+    }
+    
+    message += `✅ Requirements:\n` +
+               `• Supported formats: ${SUPPORTED_FORMATS.displayList}\n` +
+               `• Maximum file size: ${SUPPORTED_FORMATS.maxFileSizeMB}MB\n\n` +
+               `Please check your files and try again.`;
+    
+    alert(message);
+}
 
 // Dark mode functionality
 function initDarkMode() {
@@ -284,22 +403,53 @@ function setupFileUpload() {
         dropZone.style.borderColor = '#ddd';
         dropZone.style.background = '#f9f9f9';
         
-        const files = Array.from(e.dataTransfer.files).filter(file => 
-            file.type.startsWith('audio/') || 
-            ['mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'wav', 'webm'].includes(file.name.split('.').pop().toLowerCase())
-        );
+        const allFiles = Array.from(e.dataTransfer.files);
+        const validFiles = [];
+        const rejectedFiles = [];
         
-        if (files.length > 0) {
-            selectedFiles = [...selectedFiles, ...files];
+        allFiles.forEach(file => {
+            const validation = isValidAudioFile(file);
+            if (validation.valid) {
+                validFiles.push(file);
+            } else {
+                rejectedFiles.push({ file, reason: validation.reason, sizeMB: validation.sizeMB });
+            }
+        });
+        
+        if (rejectedFiles.length > 0) {
+            showFormatError(rejectedFiles);
+        }
+        
+        if (validFiles.length > 0) {
+            selectedFiles = [...selectedFiles, ...validFiles];
             displaySelectedFiles();
         }
     });
 }
 
 function handleFileSelection(e) {
-    const files = Array.from(e.target.files);
-    selectedFiles = [...selectedFiles, ...files];
-    displaySelectedFiles();
+    const allFiles = Array.from(e.target.files);
+    const validFiles = [];
+    const rejectedFiles = [];
+    
+    allFiles.forEach(file => {
+        const validation = isValidAudioFile(file);
+        if (validation.valid) {
+            validFiles.push(file);
+        } else {
+            rejectedFiles.push({ file, reason: validation.reason, sizeMB: validation.sizeMB });
+        }
+    });
+    
+    if (rejectedFiles.length > 0) {
+        showFormatError(rejectedFiles);
+    }
+    
+    if (validFiles.length > 0) {
+        selectedFiles = [...selectedFiles, ...validFiles];
+        displaySelectedFiles();
+    }
+    
     e.target.value = ''; // Reset input
 }
 
@@ -808,8 +958,9 @@ function stopPolling() {
 }
 
 // Initialize everything
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     initDarkMode();
+    await loadSupportedFormats();
     setupFileUpload();
     setupUploadControls();
     setupTranscriptionControls();

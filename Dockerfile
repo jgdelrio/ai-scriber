@@ -15,6 +15,10 @@ RUN apt-get update \
         build-essential \
         libpq-dev \
         curl \
+        ffmpeg \
+        libavcodec-extra \
+        libsndfile1 \
+        pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv

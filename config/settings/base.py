@@ -144,11 +144,11 @@ REST_FRAMEWORK = {
 }
 
 # Audio file settings
-MAX_AUDIO_FILE_SIZE = 100 * 1024 * 1024  # 100MB
-ALLOWED_AUDIO_FORMATS = ['mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'wav', 'webm']  # 'flac', 'ogg',
+MAX_AUDIO_FILE_SIZE = 20 * 1024 * 1024  # 20MB - files will be split before processing
+SUPPORTED_AUDIO_FORMATS = ['mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'wav', 'webm', 'ogg', 'opus', 'aac', 'flac']
 
 # Transcription settings
-TRANSCRIPTION_TIMEOUT = 600  # 10 minutes
+OPENAI_CALL_TIMEOUT = 600  # 10 minutes timeout for OpenAI API calls
 
 # OpenAI API settings
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')

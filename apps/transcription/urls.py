@@ -27,4 +27,5 @@ urlpatterns = [
         views.TranscriptionDetailView.as_view(),
         name="transcription_detail",
     ),
+    path("supported-formats/", views.supported_formats, name="supported_formats"),
 ]

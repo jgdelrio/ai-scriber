@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
+from django.conf import settings
 from .models import AudioFile, Transcription
 from .serializers import (
     AudioFileSerializer,
@@ -175,3 +176,13 @@ def transcription_by_audio_file(request, audio_file_id):
         return Response(
             {"error": "Transcription not available"}, status=status.HTTP_404_NOT_FOUND
         )
+
+
+@api_view(["GET"])
+def supported_formats(request):
+    """Get supported audio formats and file size limit."""
+    return Response({
+        "formats": settings.SUPPORTED_AUDIO_FORMATS,
+        "max_file_size": settings.MAX_AUDIO_FILE_SIZE,
+        "max_file_size_mb": settings.MAX_AUDIO_FILE_SIZE // (1024 * 1024),
+    })
