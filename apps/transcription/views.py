@@ -88,6 +88,55 @@ def retranscribe(request, audio_file_id):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_transcription(request, audio_file_id):
+    """Update transcription text and word timestamps."""
+    audio_file = get_object_or_404(AudioFile, id=audio_file_id, owner=request.user)
+    
+    try:
+        transcription = audio_file.transcription
+    except Transcription.DoesNotExist:
+        return Response({'error': 'No transcription found for this file'}, status=status.HTTP_404_NOT_FOUND)
+    
+    new_text = request.data.get('text', '').strip()
+    word_timestamps = request.data.get('word_timestamps', [])
+    
+    if not new_text:
+        return Response({'error': 'Text cannot be empty'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        # Update transcription text
+        transcription.text = new_text
+        transcription.save()
+        
+        # Update word timestamps
+        from .models import TranscriptionWord
+        
+        # Delete existing word timestamps
+        TranscriptionWord.objects.filter(transcription=transcription).delete()
+        
+        # Create new word timestamps
+        for word_data in word_timestamps:
+            TranscriptionWord.objects.create(
+                transcription=transcription,
+                word=word_data.get('word', ''),
+                start_time=word_data.get('start', 0.0),
+                end_time=word_data.get('end', 0.0),
+                confidence_score=0.95,  # Default confidence for edited words
+                word_index=word_data.get('index', 0)
+            )
+        
+        return Response({
+            'message': 'Transcription updated successfully',
+            'text': transcription.text,
+            'word_count': len(word_timestamps)
+        })
+        
+    except Exception as e:
+        return Response({'error': f'Failed to update transcription: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class TranscriptionDetailView(generics.RetrieveAPIView):
     """Retrieve transcription details."""
     serializer_class = TranscriptionSerializer

@@ -10,8 +10,19 @@
 <div class="dashboard-content">
     <div class="upload-section">
         <div class="header">
-            <h1>🎙️ AI Scriber</h1>
-            <p>Welcome, {{ user.first_name }}!</p>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div>
+                    <h1>🎙️ AI Scriber</h1>
+                    <p>Welcome, {{ user.first_name }}!</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 0.9rem; color: #666;">🌙 Dark Mode</span>
+                    <label class="dark-mode-toggle">
+                        <input type="checkbox" id="darkModeToggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
         </div>
     <h2 style="color: #333; margin-bottom: 1rem;">Upload Audio Files</h2>
     
@@ -72,6 +83,134 @@
 </div>
 </div>
 
+<style>
+/* Dark Mode Styles */
+body.dark-mode {
+    background-color: #1a1a1a;
+    color: #e0e0e0;
+}
+
+body.dark-mode .dashboard-content {
+    background-color: #1a1a1a;
+}
+
+body.dark-mode .upload-section,
+body.dark-mode .files-section {
+    background-color: #2d2d2d;
+    border-color: #404040;
+}
+
+body.dark-mode h1, 
+body.dark-mode h2, 
+body.dark-mode h3 {
+    color: #e0e0e0 !important;
+}
+
+body.dark-mode p {
+    color: #b0b0b0 !important;
+}
+
+body.dark-mode #dropZone {
+    background-color: #2d2d2d !important;
+    border-color: #555 !important;
+    color: #e0e0e0;
+}
+
+body.dark-mode #dropZone:hover,
+body.dark-mode #dropZone.drag-over {
+    background-color: #3d3d3d !important;
+    border-color: #007cba !important;
+}
+
+body.dark-mode .btn {
+    background-color: #007cba;
+    color: white;
+    border-color: #007cba;
+}
+
+body.dark-mode .btn:hover {
+    background-color: #005a8a;
+}
+
+body.dark-mode select,
+body.dark-mode input[type="file"] {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+    border-color: #555;
+}
+
+body.dark-mode div[style*="border: 1px solid #ddd"] {
+    border-color: #555 !important;
+    background-color: #2d2d2d !important;
+}
+
+body.dark-mode div[style*="background: #f9f9f9"] {
+    background-color: #2d2d2d !important;
+}
+
+body.dark-mode a {
+    color: #4fc3f7;
+}
+
+body.dark-mode a:hover {
+    color: #29b6f6;
+}
+
+/* Dark Mode Toggle Switch */
+.dark-mode-toggle {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.dark-mode-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 24px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: #007cba;
+}
+
+input:checked + .slider:before {
+    transform: translateX(26px);
+}
+
+body.dark-mode .slider {
+    background-color: #555;
+}
+
+body.dark-mode input:checked + .slider {
+    background-color: #4fc3f7;
+}
+</style>
+
 <script>
 // Store auth token from session
 const authToken = '{{ auth_token }}';
@@ -82,6 +221,29 @@ if (authToken) {
 // Global variables
 let selectedFiles = [];
 let uploadedFiles = [];
+
+// Dark mode functionality
+function initDarkMode() {
+    const darkModeToggle = document.getElementById('darkModeToggle');
+    const isDarkMode = localStorage.getItem('darkMode') === 'true';
+    
+    // Set initial state
+    if (isDarkMode) {
+        document.body.classList.add('dark-mode');
+        darkModeToggle.checked = true;
+    }
+    
+    // Toggle dark mode
+    darkModeToggle.addEventListener('change', function() {
+        if (this.checked) {
+            document.body.classList.add('dark-mode');
+            localStorage.setItem('darkMode', 'true');
+        } else {
+            document.body.classList.remove('dark-mode');
+            localStorage.setItem('darkMode', 'false');
+        }
+    });
+}
 
 // File handling
 function setupFileUpload() {
@@ -271,7 +433,7 @@ function displayAudioFiles(files) {
                     <h3 style="margin: 0; color: #333;">${file.original_filename}</h3>
                     ${file.transcription ? `<span style="margin-left: 1rem; color: #28a745; font-size: 0.9rem; cursor: pointer; text-decoration: underline;" onclick="openAudioPlayer(${file.id})">🎵 Open audio player and full transcription</span>` : ''}
                 </div>
-                <div>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
                     ${file.status === 'ready' && !file.transcription ? 
                         `<button onclick="transcribeFile(${file.id})" class="btn" style="font-size: 0.8rem; padding: 0.25rem 0.5rem;">Transcribe</button>` : ''}
                     ${file.status === 'failed' ? 
@@ -279,6 +441,7 @@ function displayAudioFiles(files) {
                     ${file.status === 'processing' ?
                         `<span style="color: #f93; font-size: 0.8rem; font-weight: bold;">⏳ Processing...</span>` : ''}
                     ${file.transcription ? `<span style="color: #28a745; font-size: 0.8rem; font-weight: bold;">✓ Transcribed</span>` : ''}
+                    <button onclick="deleteFile(${file.id}, '${file.original_filename.replace(/'/g, "\\'")}')" class="btn" style="font-size: 0.8rem; padding: 0.25rem 0.5rem; background: #dc3545; color: white; white-space: nowrap; min-width: auto;">🗑️ Delete</button>
                 </div>
             </div>
             <p style="color: #666; font-size: 0.9rem;">Status: <span style="color: ${getStatusColor(file.status)}">${file.status}</span></p>
@@ -378,6 +541,22 @@ async function transcribeAll() {
 
 async function transcribeFile(fileId) {
     try {
+        // Immediately update the UI to show processing status
+        const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
+        if (fileElement) {
+            const statusSpan = fileElement.querySelector('span[style*="color"]');
+            if (statusSpan) {
+                statusSpan.textContent = 'processing';
+                statusSpan.style.color = getStatusColor('processing');
+            }
+            
+            // Update the action buttons
+            const buttonContainer = fileElement.querySelector('div[style*="display: flex"]');
+            if (buttonContainer) {
+                buttonContainer.innerHTML = '<span style="color: #f93; font-size: 0.8rem; font-weight: bold;">⏳ Processing...</span><button onclick="deleteFile(' + fileId + ', \'' + fileElement.querySelector('h3').textContent.replace(/'/g, "\\'") + '\')" class="btn" style="font-size: 0.8rem; padding: 0.25rem 0.5rem; background: #dc3545; color: white; margin-left: 0.5rem; white-space: nowrap; min-width: auto;">🗑️ Delete</button>';
+            }
+        }
+        
         const response = await fetch(`/api/v1/transcription/files/${fileId}/retranscribe/`, {
             method: 'POST',
             headers: {
@@ -395,11 +574,17 @@ async function transcribeFile(fileId) {
         
         const result = await response.json();
         console.log(`Transcription started for file ${fileId}:`, result);
+        
+        // Start polling immediately for this file
+        startPollingForUpdates();
+        
         return result;
         
     } catch (error) {
         console.error(`Error transcribing file ${fileId}:`, error);
         alert(`Error transcribing file: ${error.message}`);
+        // Refresh the UI to show error state
+        loadAudioFiles();
         throw error;
     }
 }
@@ -413,6 +598,42 @@ async function retranscribeFile(fileId) {
     }
 }
 
+async function deleteFile(fileId, filename) {
+    if (!confirm(`Are you sure you want to delete "${filename}"?\n\nThis will permanently delete the file and its transcription. This action cannot be undone.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/v1/transcription/files/${fileId}/`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': 'Token ' + localStorage.getItem('authToken'),
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            // Remove the file from the UI immediately
+            const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
+            if (fileElement) {
+                fileElement.style.transition = 'opacity 0.3s ease';
+                fileElement.style.opacity = '0';
+                setTimeout(() => {
+                    fileElement.remove();
+                    // Refresh the file list to update controls visibility
+                    loadAudioFiles();
+                }, 300);
+            }
+        } else {
+            const errorData = await response.json();
+            alert(`Failed to delete file: ${errorData.error || 'Unknown error'}`);
+        }
+    } catch (error) {
+        console.error('Delete error:', error);
+        alert('Failed to delete file. Please try again.');
+    }
+}
+
 // Real-time polling for status updates
 let pollingInterval = null;
 
@@ -422,13 +643,18 @@ function startPollingForUpdates() {
         clearInterval(pollingInterval);
     }
     
+    console.log('Starting polling for transcription updates...');
+    
     // Poll every 2 seconds for updates
     pollingInterval = setInterval(async () => {
         await loadAudioFiles();
         
         // Stop polling if no files are processing
         const processingFiles = uploadedFiles.filter(file => file.status === 'processing');
+        console.log(`Polling: ${processingFiles.length} files still processing`);
+        
         if (processingFiles.length === 0) {
+            console.log('All transcriptions completed, stopping polling');
             clearInterval(pollingInterval);
             pollingInterval = null;
         }
@@ -444,6 +670,7 @@ function stopPolling() {
 
 // Initialize everything
 document.addEventListener('DOMContentLoaded', function() {
+    initDarkMode();
     setupFileUpload();
     setupUploadControls();
     setupTranscriptionControls();

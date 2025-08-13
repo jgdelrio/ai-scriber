@@ -170,18 +170,34 @@ def dashboard(request):
 def audio_player(request, file_id):
     """Audio player page for a specific file."""
     from apps.transcription.models import AudioFile, Transcription
+    import json
     
     try:
         audio_file = AudioFile.objects.get(id=file_id, owner=request.user)
         transcription = None
+        word_timestamps = []
+        
         try:
             transcription = audio_file.transcription
+            # Get word-level timestamps for accurate highlighting
+            if transcription:
+                words = transcription.words.all().order_by('word_index')
+                word_timestamps = [
+                    {
+                        'word': word.word,
+                        'start': word.start_time,
+                        'end': word.end_time,
+                        'index': word.word_index
+                    }
+                    for word in words
+                ]
         except Transcription.DoesNotExist:
             pass
         
         return render(request, 'audio_player.html', {
             'audio_file': audio_file,
             'transcription': transcription,
+            'word_timestamps_json': json.dumps(word_timestamps),
             'user': request.user
         })
     except AudioFile.DoesNotExist:

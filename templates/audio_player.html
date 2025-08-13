@@ -10,7 +10,16 @@
 <div style="padding: 2rem; min-height: calc(100vh - 4rem);">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
         <h1 style="color: #333; margin: 0;">🎙️ {{ audio_file.original_filename }}</h1>
-        <a href="{% url 'dashboard' %}" style="color: #007cba; text-decoration: none; font-weight: 500;">← Back to Dashboard</a>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="font-size: 0.9rem; color: #666;">🌙</span>
+                <label class="dark-mode-toggle">
+                    <input type="checkbox" id="darkModeToggle">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <a href="{% url 'dashboard' %}" style="color: #007cba; text-decoration: none; font-weight: 500;">← Back to Dashboard</a>
+        </div>
     </div>
     
     <!-- Audio Player Controls -->
@@ -35,14 +44,29 @@
     
     <!-- Transcription -->
     <div style="background: white; border: 1px solid #ddd; border-radius: 10px; padding: 2rem;">
-        <h2 style="color: #333; margin-bottom: 1rem;">Transcription</h2>
-        <div id="transcriptionText" style="line-height: 1.8; font-size: 1.1rem; color: #333;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h2 style="color: #333; margin: 0;">Transcription</h2>
             {% if transcription %}
-                {{ transcription.text }}
-            {% else %}
-                <p style="color: #666;">No transcription available for this file.</p>
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <span id="autoSaveStatus" style="color: #666; font-size: 0.9rem;">Auto-save enabled</span>
+                <span id="saveIndicator" style="color: #28a745; font-size: 0.9rem; display: none;">✅ Saved</span>
+            </div>
             {% endif %}
         </div>
+        
+        <!-- Word-by-word editable transcription -->
+        <div id="transcriptionContainer" style="line-height: 1.8; font-size: 1.1rem; color: #333; {% if not transcription %}display: none;{% endif %}">
+            <!-- Words will be dynamically populated here -->
+        </div>
+        
+        <p style="color: #666; font-size: 0.9rem; margin-top: 1rem; {% if not transcription %}display: none;{% endif %}">
+            💡 <strong>Tip:</strong> Click any word to edit it. Changes are automatically saved every 5 seconds.
+        </p>
+        
+        <!-- No transcription message -->
+        {% if not transcription %}
+        <p style="color: #666;">No transcription available for this file.</p>
+        {% endif %}
     </div>
 </div>
 
@@ -56,7 +80,13 @@ const currentTimeSpan = document.getElementById('currentTime');
 const durationSpan = document.getElementById('duration');
 const transcriptionText = document.getElementById('transcriptionText');
 
+// Word timestamps data from server
+let wordTimestamps = {{ word_timestamps_json|safe }};
+let originalText = "{% if transcription %}{{ transcription.text|escapejs }}{% endif %}";
 let isPlaying = false;
+let hasUnsavedChanges = false;
+let autoSaveInterval = null;
+let currentEditingWord = null;
 
 // Audio event listeners
 audioPlayer.addEventListener('loadedmetadata', function() {
@@ -102,36 +132,280 @@ function formatTime(seconds) {
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
-// Word-level highlighting (basic implementation)
+// Word-level highlighting with editable words (using real OpenAI timestamps)
 function updateTranscriptionHighlight(currentTime) {
-    // This is a basic implementation. For production, you'd need word-level timestamps
-    // from the transcription service (like OpenAI Whisper's word_timestamps option)
+    if (!wordTimestamps || wordTimestamps.length === 0) {
+        return;
+    }
     
-    const words = transcriptionText.textContent.split(' ');
-    const totalDuration = audioPlayer.duration;
-    const averageWordsPerSecond = words.length / totalDuration;
-    const currentWordIndex = Math.floor(currentTime * averageWordsPerSecond);
+    // Minimal timing adjustment since we're using real OpenAI timestamps
+    const adjustedTime = currentTime + 0.05; // 50ms ahead for minor audio processing delay
     
-    // Create highlighted version
-    const highlightedWords = words.map((word, index) => {
+    // Find current word with precise matching using real OpenAI timestamps
+    let currentWordIndex = -1;
+    
+    for (let i = 0; i < wordTimestamps.length; i++) {
+        const word = wordTimestamps[i];
+        
+        // Check if we're within the word's exact time range (minimal tolerance for real timestamps)
+        if (adjustedTime >= word.start && adjustedTime <= word.end + 0.05) {
+            currentWordIndex = i;
+            break;
+        }
+        
+        // If we're past this word but before the next, highlight this word
+        if (adjustedTime >= word.start && (i === wordTimestamps.length - 1 || adjustedTime < wordTimestamps[i + 1].start)) {
+            currentWordIndex = i;
+            break;
+        }
+    }
+    
+    // Update highlighting for all word elements with smooth transitions
+    document.querySelectorAll('.editable-word').forEach((wordElement, index) => {
+        wordElement.classList.remove('current-word', 'spoken-word');
+        
         if (index === currentWordIndex) {
-            return `<span style="background-color: #ffeb3b; padding: 0.2rem; border-radius: 3px;">${word}</span>`;
-        } else if (index < currentWordIndex) {
-            return `<span style="color: #666;">${word}</span>`;
-        } else {
-            return word;
+            wordElement.classList.add('current-word');
+        } else if (wordTimestamps[index] && adjustedTime > wordTimestamps[index].end + 0.1) {
+            // Mark as spoken with minimal delay for real timestamps
+            wordElement.classList.add('spoken-word');
         }
     });
+}
+
+// Create editable word elements
+function createEditableTranscription() {
+    const container = document.getElementById('transcriptionContainer');
+    if (!container || !wordTimestamps || wordTimestamps.length === 0) {
+        if (container) {
+            container.innerHTML = originalText;
+        }
+        return;
+    }
     
-    transcriptionText.innerHTML = highlightedWords.join(' ');
+    const wordElements = wordTimestamps.map((wordData, index) => {
+        return `<span class="editable-word" 
+                      data-index="${index}" 
+                      data-original="${wordData.word}"
+                      contenteditable="true"
+                      spellcheck="false"
+                      style="cursor: text; padding: 0.1rem; margin: 0.1rem; border-radius: 3px; display: inline-block;"
+                      onblur="handleWordEdit(${index}, this)"
+                      onkeydown="handleWordKeydown(event, ${index})"
+                      onfocus="handleWordFocus(${index})">${wordData.word}</span>`;
+    }).join(' ');
+    
+    container.innerHTML = wordElements;
+    
+    // Add CSS styles
+    if (!document.getElementById('transcriptionStyles')) {
+        const style = document.createElement('style');
+        style.id = 'transcriptionStyles';
+        style.textContent = `
+            .editable-word:hover {
+                background-color: #f0f0f0;
+            }
+            .editable-word:focus {
+                background-color: #e6f3ff;
+                outline: 2px solid #007cba;
+            }
+            .current-word {
+                background-color: #ffeb3b !important;
+                font-weight: bold;
+            }
+            .spoken-word {
+                color: #888;
+            }
+            .unsaved-word {
+                background-color: #fff3cd;
+                border: 1px dashed #ffc107;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
+// Word editing functions
+function handleWordFocus(index) {
+    currentEditingWord = index;
+}
+
+function handleWordKeydown(event, index) {
+    // Handle Enter key to move to next word
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        const nextWord = document.querySelector(`[data-index="${index + 1}"]`);
+        if (nextWord) {
+            nextWord.focus();
+        }
+    }
+    // Handle Tab to move to next/previous word
+    else if (event.key === 'Tab') {
+        event.preventDefault();
+        const targetIndex = event.shiftKey ? index - 1 : index + 1;
+        const targetWord = document.querySelector(`[data-index="${targetIndex}"]`);
+        if (targetWord) {
+            targetWord.focus();
+        }
+    }
+}
+
+function handleWordEdit(index, element) {
+    const newWord = element.textContent.trim();
+    const originalWord = element.getAttribute('data-original');
+    
+    if (newWord !== originalWord) {
+        // Update the word data
+        if (wordTimestamps[index]) {
+            wordTimestamps[index].word = newWord;
+        }
+        
+        // Mark as unsaved
+        element.classList.add('unsaved-word');
+        hasUnsavedChanges = true;
+        
+        // Update save status
+        updateSaveStatus('unsaved');
+    } else {
+        // Word reverted to original
+        element.classList.remove('unsaved-word');
+        checkForUnsavedChanges();
+    }
+    
+    currentEditingWord = null;
+}
+
+function checkForUnsavedChanges() {
+    const unsavedWords = document.querySelectorAll('.unsaved-word');
+    hasUnsavedChanges = unsavedWords.length > 0;
+    
+    if (!hasUnsavedChanges) {
+        updateSaveStatus('saved');
+    }
+}
+
+function updateSaveStatus(status) {
+    const saveIndicator = document.getElementById('saveIndicator');
+    const autoSaveStatus = document.getElementById('autoSaveStatus');
+    
+    switch (status) {
+        case 'unsaved':
+            saveIndicator.style.display = 'none';
+            autoSaveStatus.textContent = 'Auto-save pending...';
+            autoSaveStatus.style.color = '#f93';
+            break;
+        case 'saving':
+            saveIndicator.style.display = 'none';
+            autoSaveStatus.textContent = 'Saving changes...';
+            autoSaveStatus.style.color = '#007cba';
+            break;
+        case 'saved':
+            saveIndicator.style.display = 'inline';
+            autoSaveStatus.textContent = 'Auto-save enabled';
+            autoSaveStatus.style.color = '#666';
+            setTimeout(() => {
+                saveIndicator.style.display = 'none';
+            }, 3000);
+            break;
+        case 'error':
+            saveIndicator.style.display = 'none';
+            autoSaveStatus.textContent = 'Auto-save error - retrying...';
+            autoSaveStatus.style.color = '#c33';
+            break;
+    }
+}
+
+async function autoSaveChanges() {
+    if (!hasUnsavedChanges) {
+        return;
+    }
+    
+    updateSaveStatus('saving');
+    
+    try {
+        // Get current text from all word elements
+        const wordElements = document.querySelectorAll('.editable-word');
+        const updatedTimestamps = Array.from(wordElements).map((element, index) => ({
+            word: element.textContent.trim(),
+            start: wordTimestamps[index]?.start || index * 0.5,
+            end: wordTimestamps[index]?.end || (index * 0.5) + 0.5,
+            index: index
+        }));
+        
+        const newText = updatedTimestamps.map(w => w.word).join(' ');
+        
+        // Send update to server
+        const response = await fetch(`/api/v1/transcription/files/{{ audio_file.id }}/update-transcription/`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Token ' + localStorage.getItem('authToken') || '{{ csrf_token }}',
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                text: newText,
+                word_timestamps: updatedTimestamps
+            })
+        });
+        
+        if (response.ok) {
+            // Update local data
+            originalText = newText;
+            wordTimestamps = updatedTimestamps;
+            
+            // Remove unsaved indicators
+            document.querySelectorAll('.unsaved-word').forEach(element => {
+                element.classList.remove('unsaved-word');
+                element.setAttribute('data-original', element.textContent.trim());
+            });
+            
+            hasUnsavedChanges = false;
+            updateSaveStatus('saved');
+        } else {
+            throw new Error('Save failed');
+        }
+    } catch (error) {
+        console.error('Auto-save error:', error);
+        updateSaveStatus('error');
+    }
+}
+
+function startAutoSave() {
+    // Auto-save every 5 seconds
+    autoSaveInterval = setInterval(autoSaveChanges, 5000);
+}
+
+function stopAutoSave() {
+    if (autoSaveInterval) {
+        clearInterval(autoSaveInterval);
+        autoSaveInterval = null;
+    }
 }
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
-    // If there's transcription text, split it into words for highlighting
-    if (transcriptionText.textContent.trim()) {
-        // Initial highlighting setup
+    // Create editable transcription
+    createEditableTranscription();
+    
+    // Start auto-save if we have transcription
+    if (wordTimestamps && wordTimestamps.length > 0) {
+        console.log(`Loaded ${wordTimestamps.length} word timestamps for word-by-word editing`);
+        startAutoSave();
         updateTranscriptionHighlight(0);
+    } else {
+        console.log('No word timestamps available - editing disabled');
+    }
+});
+
+// Clean up on page unload
+window.addEventListener('beforeunload', function(e) {
+    stopAutoSave();
+    
+    // Warn if there are unsaved changes
+    if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+        return e.returnValue;
     }
 });
 </script>
