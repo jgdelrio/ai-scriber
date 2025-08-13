@@ -903,6 +903,8 @@ class TranscriptionService:
             transcription_data = {
                 'text': transcription.text,
                 'language': transcription.language,
+                'confidence_score': transcription.confidence_score or 0.95,
+                'processing_time': transcription.processing_time or 0.0,
                 'words': words_data,
                 'segments': segments_data
             }
