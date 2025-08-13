@@ -1,6 +1,7 @@
 """
 Custom permissions for the application.
 """
+
 from rest_framework import permissions
 
 

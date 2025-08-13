@@ -451,7 +451,7 @@ function displayAudioFiles(files) {
                     ${file.status === 'failed' ? 
                         `<button onclick="retranscribeFile(${file.id})" class="btn" style="font-size: 0.8rem; padding: 0.25rem 0.5rem;">Retry</button>` : ''}
                     ${file.status === 'processing' ?
-                        `<span style="color: #f93; font-size: 0.8rem; font-weight: bold;">⏳ Processing...</span>` : ''}
+                        `<span style="color: #f93; font-size: 0.8rem; font-weight: bold;" id="processing-status-${file.id}">⏳ Processing...</span>` : ''}
                     ${file.transcription ? `<span style="color: #28a745; font-size: 0.8rem; font-weight: bold;">✓ Transcribed</span>` : ''}
                     <button onclick="deleteFile(${file.id}, '${file.original_filename.replace(/'/g, "\\'")}')" class="btn" style="font-size: 0.8rem; padding: 0.25rem 0.5rem; background: #dc3545; color: white; white-space: nowrap; min-width: auto;">🗑️ Delete</button>
                 </div>
@@ -603,10 +603,10 @@ async function transcribeFile(fileId) {
                 statusSpan.style.color = getStatusColor('processing');
             }
             
-            // Update the action buttons
+            // Update the action buttons with enhanced processing message
             const buttonContainer = fileElement.querySelector('div[style*="display: flex"]');
             if (buttonContainer) {
-                buttonContainer.innerHTML = '<span style="color: #f93; font-size: 0.8rem; font-weight: bold;">⏳ Processing...</span><button onclick="deleteFile(' + fileId + ', \'' + fileElement.querySelector('h3').textContent.replace(/'/g, "\\'") + '\')" class="btn" style="font-size: 0.8rem; padding: 0.25rem 0.5rem; background: #dc3545; color: white; margin-left: 0.5rem; white-space: nowrap; min-width: auto;">🗑️ Delete</button>';
+                buttonContainer.innerHTML = '<span style="color: #f93; font-size: 0.8rem; font-weight: bold;" id="processing-status-' + fileId + '">⏳ Processing... (Checking file duration)</span><button onclick="deleteFile(' + fileId + ', \'' + fileElement.querySelector('h3').textContent.replace(/'/g, "\\'") + '\')" class="btn" style="font-size: 0.8rem; padding: 0.25rem 0.5rem; background: #dc3545; color: white; margin-left: 0.5rem; white-space: nowrap; min-width: auto;">🗑️ Delete</button>';
             }
         }
         
@@ -753,6 +753,19 @@ async function deleteAllFiles() {
 
 // Real-time polling for status updates
 let pollingInterval = null;
+let pollingCount = 0;
+
+function updateProcessingStatus(fileId, duration) {
+    const statusElement = document.getElementById(`processing-status-${fileId}`);
+    if (statusElement && duration) {
+        if (duration > 600) { // 10 minutes
+            const segments = Math.ceil(duration / 600);
+            statusElement.textContent = `⏳ Processing long file (${Math.floor(duration/60)}min) - Split into ${segments} segments`;
+        } else {
+            statusElement.textContent = `⏳ Processing... (${Math.floor(duration/60)}min${duration % 60 > 0 ? ` ${Math.floor(duration % 60)}s` : ''})`;
+        }
+    }
+}
 
 function startPollingForUpdates() {
     // Clear any existing polling
@@ -761,19 +774,28 @@ function startPollingForUpdates() {
     }
     
     console.log('Starting polling for transcription updates...');
+    pollingCount = 0;
     
     // Poll every 2 seconds for updates
     pollingInterval = setInterval(async () => {
         await loadAudioFiles();
+        pollingCount++;
         
-        // Stop polling if no files are processing
+        // Update processing status for long files
         const processingFiles = uploadedFiles.filter(file => file.status === 'processing');
-        console.log(`Polling: ${processingFiles.length} files still processing`);
+        processingFiles.forEach(file => {
+            if (file.duration) {
+                updateProcessingStatus(file.id, file.duration);
+            }
+        });
+        
+        console.log(`Polling: ${processingFiles.length} files still processing (${pollingCount} polls)`);
         
         if (processingFiles.length === 0) {
             console.log('All transcriptions completed, stopping polling');
             clearInterval(pollingInterval);
             pollingInterval = null;
+            pollingCount = 0;
         }
     }, 2000);
 }
