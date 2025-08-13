@@ -1,0 +1,582 @@
+{% extends 'base.html' %}
+
+{% block title %}Audio Player - AI Scriber{% endblock %}
+
+{% block body_class %}{% endblock %}
+
+{% block container_class %}dashboard-container{% endblock %}
+
+{% block content %}
+<div style="padding: 2rem; min-height: calc(100vh - 4rem);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+        <h1 style="color: #333; margin: 0;">🎙️ {{ audio_file.original_filename }}</h1>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="font-size: 0.9rem; color: #666;">🌙</span>
+                <label class="dark-mode-toggle">
+                    <input type="checkbox" id="darkModeToggle">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <a href="{% url 'dashboard' %}" style="color: #007cba; text-decoration: none; font-weight: 500;">← Back to Dashboard</a>
+        </div>
+    </div>
+    
+    <!-- Audio Player Controls -->
+    <div id="audioPlayerSection" style="background: #f9f9f9; border-radius: 10px; padding: 2rem; margin-bottom: 2rem;">
+        <audio id="audioPlayer" controls style="width: 100%; margin-bottom: 1rem;">
+            <source src="{{ audio_file.file.url }}" type="audio/mpeg">
+            Your browser does not support the audio element.
+        </audio>
+        
+        <!-- Custom Controls -->
+        <div style="display: flex; justify-content: center; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+            <button id="backwardBtn" class="btn" style="width: auto; padding: 0.5rem 1rem;">⏪ -10s</button>
+            <button id="playPauseBtn" class="btn" style="width: auto; padding: 0.5rem 1rem;">▶️ Play</button>
+            <button id="forwardBtn" class="btn" style="width: auto; padding: 0.5rem 1rem;">⏩ +10s</button>
+        </div>
+        
+        <!-- Progress Info -->
+        <div style="text-align: center; color: #666;">
+            <span id="currentTime">0:00</span> / <span id="duration">0:00</span>
+        </div>
+    </div>
+    
+    <!-- Transcription -->
+    <div style="background: white; border: 1px solid #ddd; border-radius: 10px; padding: 2rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h2 style="color: #333; margin: 0;">Transcription</h2>
+            {% if transcription %}
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <span id="autoSaveStatus" style="color: #666; font-size: 0.9rem;">Auto-save enabled</span>
+                <span id="saveIndicator" style="color: #28a745; font-size: 0.9rem; display: none;">✅ Saved</span>
+            </div>
+            {% endif %}
+        </div>
+        
+        <!-- Word-by-word editable transcription -->
+        <div id="transcriptionContainer" style="line-height: 1.8; font-size: 1.1rem; color: #333; {% if not transcription %}display: none;{% endif %}">
+            <!-- Words will be dynamically populated here -->
+        </div>
+        
+        <p style="color: #666; font-size: 0.9rem; margin-top: 1rem; {% if not transcription %}display: none;{% endif %}">
+            💡 <strong>Tip:</strong> Click any word to edit it. Changes are automatically saved every 5 seconds.
+        </p>
+        
+        <!-- No transcription message -->
+        {% if not transcription %}
+        <p style="color: #666;">No transcription available for this file.</p>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+/* Dark Mode Styles for Audio Player */
+body.dark-mode {
+    background-color: #1a1a1a;
+    color: #e0e0e0;
+}
+
+body.dark-mode h1, 
+body.dark-mode h2 {
+    color: #e0e0e0 !important;
+}
+
+body.dark-mode p {
+    color: #b0b0b0 !important;
+}
+
+body.dark-mode #audioPlayerSection {
+    background-color: #2d2d2d !important;
+    border-color: #404040;
+}
+
+body.dark-mode div[style*="background: white"] {
+    background-color: #2d2d2d !important;
+    border-color: #555 !important;
+    color: #e0e0e0 !important;
+}
+
+body.dark-mode #transcriptionContainer {
+    background-color: #2d2d2d !important;
+    color: #e0e0e0 !important;
+}
+
+body.dark-mode #transcriptionContainer .editable-word {
+    color: #e0e0e0 !important;
+}
+
+body.dark-mode div[style*="padding: 2rem"] {
+    background-color: #1a1a1a !important;
+}
+
+body.dark-mode .dashboard-container {
+    background: #1a1a1a !important;
+}
+
+body.dark-mode {
+    background: #1a1a1a !important;
+}
+
+body.dark-mode .btn {
+    background-color: #007cba;
+    color: white;
+    border-color: #007cba;
+}
+
+body.dark-mode .btn:hover {
+    background-color: #005a8a;
+}
+
+body.dark-mode a {
+    color: #4fc3f7;
+}
+
+body.dark-mode a:hover {
+    color: #29b6f6;
+}
+
+body.dark-mode .editable-word:hover {
+    background-color: #3d3d3d !important;
+}
+
+body.dark-mode .editable-word:focus {
+    background-color: #1e3a5f !important;
+    outline: 2px solid #4fc3f7 !important;
+}
+
+body.dark-mode .current-word {
+    background-color: #f39c12 !important;
+    color: #1a1a1a !important;
+}
+
+body.dark-mode .spoken-word {
+    color: #999 !important;
+}
+
+body.dark-mode .unsaved-word {
+    background-color: #4a3f2a !important;
+    border-color: #f39c12 !important;
+}
+
+/* Dark Mode Toggle Switch */
+.dark-mode-toggle {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.dark-mode-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 24px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: #007cba;
+}
+
+input:checked + .slider:before {
+    transform: translateX(26px);
+}
+
+body.dark-mode .slider {
+    background-color: #555;
+}
+
+body.dark-mode input:checked + .slider {
+    background-color: #4fc3f7;
+}
+</style>
+
+<script>
+// Dark mode functionality
+function initDarkMode() {
+    const darkModeToggle = document.getElementById('darkModeToggle');
+    const isDarkMode = localStorage.getItem('darkMode') === 'true';
+    
+    // Set initial state
+    if (isDarkMode) {
+        document.body.classList.add('dark-mode');
+        darkModeToggle.checked = true;
+    }
+    
+    // Toggle dark mode
+    darkModeToggle.addEventListener('change', function() {
+        if (this.checked) {
+            document.body.classList.add('dark-mode');
+            localStorage.setItem('darkMode', 'true');
+        } else {
+            document.body.classList.remove('dark-mode');
+            localStorage.setItem('darkMode', 'false');
+        }
+    });
+}
+
+// Audio player functionality
+const audioPlayer = document.getElementById('audioPlayer');
+const playPauseBtn = document.getElementById('playPauseBtn');
+const backwardBtn = document.getElementById('backwardBtn');
+const forwardBtn = document.getElementById('forwardBtn');
+const currentTimeSpan = document.getElementById('currentTime');
+const durationSpan = document.getElementById('duration');
+const transcriptionText = document.getElementById('transcriptionText');
+
+// Word timestamps data from server
+let wordTimestamps = {{ word_timestamps_json|safe }};
+let originalText = "{% if transcription %}{{ transcription.text|escapejs }}{% endif %}";
+let isPlaying = false;
+let hasUnsavedChanges = false;
+let autoSaveInterval = null;
+let currentEditingWord = null;
+
+// Audio event listeners
+audioPlayer.addEventListener('loadedmetadata', function() {
+    durationSpan.textContent = formatTime(audioPlayer.duration);
+});
+
+audioPlayer.addEventListener('timeupdate', function() {
+    currentTimeSpan.textContent = formatTime(audioPlayer.currentTime);
+    updateTranscriptionHighlight(audioPlayer.currentTime);
+});
+
+audioPlayer.addEventListener('play', function() {
+    isPlaying = true;
+    playPauseBtn.textContent = '⏸️ Pause';
+});
+
+audioPlayer.addEventListener('pause', function() {
+    isPlaying = false;
+    playPauseBtn.textContent = '▶️ Play';
+});
+
+// Control button event listeners
+playPauseBtn.addEventListener('click', function() {
+    if (isPlaying) {
+        audioPlayer.pause();
+    } else {
+        audioPlayer.play();
+    }
+});
+
+backwardBtn.addEventListener('click', function() {
+    audioPlayer.currentTime = Math.max(0, audioPlayer.currentTime - 10);
+});
+
+forwardBtn.addEventListener('click', function() {
+    audioPlayer.currentTime = Math.min(audioPlayer.duration, audioPlayer.currentTime + 10);
+});
+
+// Format time helper
+function formatTime(seconds) {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+
+// Word-level highlighting with editable words (using real OpenAI timestamps)
+function updateTranscriptionHighlight(currentTime) {
+    if (!wordTimestamps || wordTimestamps.length === 0) {
+        return;
+    }
+    
+    // Minimal timing adjustment since we're using real OpenAI timestamps
+    const adjustedTime = currentTime + 0.05; // 50ms ahead for minor audio processing delay
+    
+    // Find current word with precise matching using real OpenAI timestamps
+    let currentWordIndex = -1;
+    
+    for (let i = 0; i < wordTimestamps.length; i++) {
+        const word = wordTimestamps[i];
+        
+        // Check if we're within the word's exact time range (minimal tolerance for real timestamps)
+        if (adjustedTime >= word.start && adjustedTime <= word.end + 0.05) {
+            currentWordIndex = i;
+            break;
+        }
+        
+        // If we're past this word but before the next, highlight this word
+        if (adjustedTime >= word.start && (i === wordTimestamps.length - 1 || adjustedTime < wordTimestamps[i + 1].start)) {
+            currentWordIndex = i;
+            break;
+        }
+    }
+    
+    // Update highlighting for all word elements with smooth transitions
+    document.querySelectorAll('.editable-word').forEach((wordElement, index) => {
+        wordElement.classList.remove('current-word', 'spoken-word');
+        
+        if (index === currentWordIndex) {
+            wordElement.classList.add('current-word');
+        } else if (wordTimestamps[index] && adjustedTime > wordTimestamps[index].end + 0.1) {
+            // Mark as spoken with minimal delay for real timestamps
+            wordElement.classList.add('spoken-word');
+        }
+    });
+}
+
+// Create editable word elements
+function createEditableTranscription() {
+    const container = document.getElementById('transcriptionContainer');
+    if (!container || !wordTimestamps || wordTimestamps.length === 0) {
+        if (container) {
+            container.innerHTML = originalText;
+        }
+        return;
+    }
+    
+    const wordElements = wordTimestamps.map((wordData, index) => {
+        return `<span class="editable-word" 
+                      data-index="${index}" 
+                      data-original="${wordData.word}"
+                      contenteditable="true"
+                      spellcheck="false"
+                      style="cursor: text; padding: 0.1rem; margin: 0.1rem; border-radius: 3px; display: inline-block;"
+                      onblur="handleWordEdit(${index}, this)"
+                      onkeydown="handleWordKeydown(event, ${index})"
+                      onfocus="handleWordFocus(${index})">${wordData.word}</span>`;
+    }).join(' ');
+    
+    container.innerHTML = wordElements;
+    
+    // Add CSS styles
+    if (!document.getElementById('transcriptionStyles')) {
+        const style = document.createElement('style');
+        style.id = 'transcriptionStyles';
+        style.textContent = `
+            .editable-word:hover {
+                background-color: #f0f0f0;
+            }
+            .editable-word:focus {
+                background-color: #e6f3ff;
+                outline: 2px solid #007cba;
+            }
+            .current-word {
+                background-color: #ffeb3b !important;
+                font-weight: bold;
+            }
+            .spoken-word {
+                color: #888;
+            }
+            .unsaved-word {
+                background-color: #fff3cd;
+                border: 1px dashed #ffc107;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
+// Word editing functions
+function handleWordFocus(index) {
+    currentEditingWord = index;
+}
+
+function handleWordKeydown(event, index) {
+    // Handle Enter key to move to next word
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        const nextWord = document.querySelector(`[data-index="${index + 1}"]`);
+        if (nextWord) {
+            nextWord.focus();
+        }
+    }
+    // Handle Tab to move to next/previous word
+    else if (event.key === 'Tab') {
+        event.preventDefault();
+        const targetIndex = event.shiftKey ? index - 1 : index + 1;
+        const targetWord = document.querySelector(`[data-index="${targetIndex}"]`);
+        if (targetWord) {
+            targetWord.focus();
+        }
+    }
+}
+
+function handleWordEdit(index, element) {
+    const newWord = element.textContent.trim();
+    const originalWord = element.getAttribute('data-original');
+    
+    if (newWord !== originalWord) {
+        // Update the word data
+        if (wordTimestamps[index]) {
+            wordTimestamps[index].word = newWord;
+        }
+        
+        // Mark as unsaved
+        element.classList.add('unsaved-word');
+        hasUnsavedChanges = true;
+        
+        // Update save status
+        updateSaveStatus('unsaved');
+    } else {
+        // Word reverted to original
+        element.classList.remove('unsaved-word');
+        checkForUnsavedChanges();
+    }
+    
+    currentEditingWord = null;
+}
+
+function checkForUnsavedChanges() {
+    const unsavedWords = document.querySelectorAll('.unsaved-word');
+    hasUnsavedChanges = unsavedWords.length > 0;
+    
+    if (!hasUnsavedChanges) {
+        updateSaveStatus('saved');
+    }
+}
+
+function updateSaveStatus(status) {
+    const saveIndicator = document.getElementById('saveIndicator');
+    const autoSaveStatus = document.getElementById('autoSaveStatus');
+    
+    switch (status) {
+        case 'unsaved':
+            saveIndicator.style.display = 'none';
+            autoSaveStatus.textContent = 'Auto-save pending...';
+            autoSaveStatus.style.color = '#f93';
+            break;
+        case 'saving':
+            saveIndicator.style.display = 'none';
+            autoSaveStatus.textContent = 'Saving changes...';
+            autoSaveStatus.style.color = '#007cba';
+            break;
+        case 'saved':
+            saveIndicator.style.display = 'inline';
+            autoSaveStatus.textContent = 'Auto-save enabled';
+            autoSaveStatus.style.color = '#666';
+            setTimeout(() => {
+                saveIndicator.style.display = 'none';
+            }, 3000);
+            break;
+        case 'error':
+            saveIndicator.style.display = 'none';
+            autoSaveStatus.textContent = 'Auto-save error - retrying...';
+            autoSaveStatus.style.color = '#c33';
+            break;
+    }
+}
+
+async function autoSaveChanges() {
+    if (!hasUnsavedChanges) {
+        return;
+    }
+    
+    updateSaveStatus('saving');
+    
+    try {
+        // Get current text from all word elements
+        const wordElements = document.querySelectorAll('.editable-word');
+        const updatedTimestamps = Array.from(wordElements).map((element, index) => ({
+            word: element.textContent.trim(),
+            start: wordTimestamps[index]?.start || index * 0.5,
+            end: wordTimestamps[index]?.end || (index * 0.5) + 0.5,
+            index: index
+        }));
+        
+        const newText = updatedTimestamps.map(w => w.word).join(' ');
+        
+        // Send update to server
+        const response = await fetch(`/api/v1/transcription/files/{{ audio_file.id }}/update-transcription/`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Token ' + localStorage.getItem('authToken') || '{{ csrf_token }}',
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                text: newText,
+                word_timestamps: updatedTimestamps
+            })
+        });
+        
+        if (response.ok) {
+            // Update local data
+            originalText = newText;
+            wordTimestamps = updatedTimestamps;
+            
+            // Remove unsaved indicators
+            document.querySelectorAll('.unsaved-word').forEach(element => {
+                element.classList.remove('unsaved-word');
+                element.setAttribute('data-original', element.textContent.trim());
+            });
+            
+            hasUnsavedChanges = false;
+            updateSaveStatus('saved');
+        } else {
+            throw new Error('Save failed');
+        }
+    } catch (error) {
+        console.error('Auto-save error:', error);
+        updateSaveStatus('error');
+    }
+}
+
+function startAutoSave() {
+    // Auto-save every 5 seconds
+    autoSaveInterval = setInterval(autoSaveChanges, 5000);
+}
+
+function stopAutoSave() {
+    if (autoSaveInterval) {
+        clearInterval(autoSaveInterval);
+        autoSaveInterval = null;
+    }
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize dark mode
+    initDarkMode();
+    
+    // Create editable transcription
+    createEditableTranscription();
+    
+    // Start auto-save if we have transcription
+    if (wordTimestamps && wordTimestamps.length > 0) {
+        console.log(`Loaded ${wordTimestamps.length} word timestamps for word-by-word editing`);
+        startAutoSave();
+        updateTranscriptionHighlight(0);
+    } else {
+        console.log('No word timestamps available - editing disabled');
+    }
+});
+
+// Clean up on page unload
+window.addEventListener('beforeunload', function(e) {
+    stopAutoSave();
+    
+    // Warn if there are unsaved changes
+    if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+        return e.returnValue;
+    }
+});
+</script>
+{% endblock %}

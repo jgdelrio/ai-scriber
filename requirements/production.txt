@@ -1,0 +1,12 @@
+-r base.txt
+
+# Production server
+gunicorn>=21.0.0
+whitenoise>=6.5.0
+
+# Monitoring and logging
+sentry-sdk>=1.28.0
+
+# Task queue (optional)
+# celery>=5.3.0
+# redis>=4.6.0

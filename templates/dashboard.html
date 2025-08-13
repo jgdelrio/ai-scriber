@@ -1,0 +1,998 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - AI Scriber{% endblock %}
+
+{% block body_class %}{% endblock %}
+
+{% block container_class %}dashboard-container{% endblock %}
+
+{% block content %}
+<div class="dashboard-content">
+    <div class="upload-section">
+        <div class="header">
+            <div style="display: flex; justify-content: flex-start; align-items: center; margin-bottom: 1rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 0.9rem; color: #666;">🌙 Dark Mode</span>
+                    <label class="dark-mode-toggle">
+                        <input type="checkbox" id="darkModeToggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+            <div style="margin-bottom: 1rem;">
+                <h1>🎙️ AI Scriber</h1>
+                <p>Welcome, {{ user.first_name }}!</p>
+            </div>
+        </div>
+    <h2 style="color: #333; margin-bottom: 1rem;">Upload Audio Files</h2>
+    
+    <!-- Drop Zone -->
+    <div id="dropZone" style="border: 2px dashed #ddd; border-radius: 10px; padding: 2rem; text-align: center; margin-bottom: 1rem; background: #f9f9f9; transition: all 0.3s;">
+        <div id="dropContent">
+            <p style="color: #666; font-size: 1.1rem; margin-bottom: 1rem;">📁 Drop audio files here or click to browse</p>
+            <p style="color: #999; font-size: 0.9rem; margin-bottom: 1rem;">Loading supported formats...</p>
+            <input type="file" id="fileInput" multiple style="display: none;">
+            <button type="button" id="browseBtn" class="btn" style="margin-bottom: 1rem;">Choose Files</button>
+        </div>
+    </div>
+    
+    <!-- Selected Files Display -->
+    <div id="selectedFiles" style="margin-bottom: 1rem;"></div>
+    
+    <!-- Language Selection -->
+    <div class="form-group" style="margin-bottom: 1rem;">
+        <label for="language">Language for all files</label>
+        <select id="language" name="language" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 5px;">
+            <option value="auto">Auto-detect</option>
+            <option value="en">English</option>
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+            <option value="it">Italian</option>
+            <option value="pt">Portuguese</option>
+            <option value="ja">Japanese</option>
+            <option value="ko">Korean</option>
+            <option value="zh">Chinese</option>
+        </select>
+    </div>
+    
+    <!-- Upload Controls -->
+    <div id="uploadControls" style="display: none;">
+        <button type="button" id="uploadAllBtn" class="btn" style="margin-right: 1rem;">Upload All Files</button>
+        <button type="button" id="clearAllBtn" class="btn" style="background: #666;">Clear All</button>
+    </div>
+    
+    <!-- Transcription Controls -->
+    <div id="transcriptionControls" style="margin-top: 2rem; display: none;">
+        <h3 style="color: #333; margin-bottom: 1rem;">Transcription Options</h3>
+        <button type="button" id="transcribeSelectedBtn" class="btn" style="margin-bottom: 0.5rem;">Transcribe Selected</button>
+        <button type="button" id="transcribeAllBtn" class="btn" style="margin-bottom: 0.5rem;">Transcribe All</button>
+        <button type="button" id="selectAllBtn" class="btn" style="background: #666; margin-bottom: 0.5rem;">Select All</button>
+        <button type="button" id="deselectAllBtn" class="btn" style="background: #666; margin-bottom: 0.5rem;">Deselect All</button>
+        <button type="button" id="deleteAllBtn" class="btn" style="background: #dc3545; margin-bottom: 0.5rem;">🗑️ Delete All Files</button>
+    </div>
+    
+    <div class="links" style="margin-top: 2rem;">
+        <a href="{% url 'web_logout' %}">Logout</a>
+    </div>
+</div>
+
+<div class="files-section">
+    <h2 style="color: #333; margin-bottom: 1rem;">Your Audio Files</h2>
+    <div id="audioFiles">
+        <p style="color: #666;">Loading your files...</p>
+    </div>
+</div>
+</div>
+
+<style>
+/* Dark Mode Styles */
+body.dark-mode {
+    background-color: #1a1a1a;
+    color: #e0e0e0;
+}
+
+body.dark-mode .dashboard-content {
+    background-color: #1a1a1a;
+}
+
+body.dark-mode .upload-section,
+body.dark-mode .files-section {
+    background-color: #2d2d2d;
+    border-color: #404040;
+}
+
+body.dark-mode h1, 
+body.dark-mode h2, 
+body.dark-mode h3 {
+    color: #e0e0e0 !important;
+}
+
+body.dark-mode p {
+    color: #b0b0b0 !important;
+}
+
+body.dark-mode p[style*="color: #999"] {
+    color: #888 !important;
+}
+
+body.dark-mode #dropZone {
+    background-color: #2d2d2d !important;
+    border-color: #555 !important;
+    color: #e0e0e0;
+}
+
+body.dark-mode #dropZone:hover,
+body.dark-mode #dropZone.drag-over {
+    background-color: #3d3d3d !important;
+    border-color: #007cba !important;
+}
+
+body.dark-mode .btn {
+    background-color: #007cba;
+    color: white;
+    border-color: #007cba;
+}
+
+body.dark-mode span[onclick*="downloadTranscription"] {
+    color: #4fc3f7 !important;
+}
+
+body.dark-mode span[onclick*="openAudioPlayer"] {
+    color: #66bb6a !important;
+}
+
+body.dark-mode .btn:hover {
+    background-color: #005a8a;
+}
+
+body.dark-mode select,
+body.dark-mode input[type="file"] {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+    border-color: #555;
+}
+
+body.dark-mode div[style*="border: 1px solid #ddd"] {
+    border-color: #555 !important;
+    background-color: #2d2d2d !important;
+}
+
+body.dark-mode div[style*="background: #f9f9f9"] {
+    background-color: #2d2d2d !important;
+}
+
+body.dark-mode a {
+    color: #4fc3f7;
+}
+
+body.dark-mode a:hover {
+    color: #29b6f6;
+}
+
+/* Fix label visibility in dark mode */
+body.dark-mode label {
+    color: #e0e0e0 !important;
+}
+
+/* Fix selected files text visibility */
+body.dark-mode span[style*="color: #333"] {
+    color: #e0e0e0 !important;
+}
+
+/* Dark Mode Toggle Switch */
+.dark-mode-toggle {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.dark-mode-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 24px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: #007cba;
+}
+
+input:checked + .slider:before {
+    transform: translateX(26px);
+}
+
+body.dark-mode .slider {
+    background-color: #555;
+}
+
+body.dark-mode input:checked + .slider {
+    background-color: #4fc3f7;
+}
+
+/* Fix dark mode toggle label color */
+body.dark-mode span[style*="color: #666"] {
+    color: #b0b0b0 !important;
+}
+</style>
+
+<script>
+// Store auth token from session
+const authToken = '{{ auth_token }}';
+if (authToken) {
+    localStorage.setItem('authToken', authToken);
+}
+
+// Global variables
+let selectedFiles = [];
+let uploadedFiles = [];
+let SUPPORTED_FORMATS = {
+    extensions: [],
+    mimeTypes: [],
+    displayList: '',
+    maxFileSize: 0,
+    maxFileSizeMB: 0
+};
+
+function isValidAudioFile(file) {
+    // Check file size first
+    if (SUPPORTED_FORMATS.maxFileSize > 0 && file.size > SUPPORTED_FORMATS.maxFileSize) {
+        return { valid: false, reason: 'size', sizeMB: Math.round(file.size / (1024 * 1024)) };
+    }
+    
+    // Check MIME type first
+    if (file.type && SUPPORTED_FORMATS.mimeTypes.includes(file.type)) {
+        return { valid: true };
+    }
+    
+    // Check file extension as fallback
+    const extension = file.name.split('.').pop().toLowerCase();
+    if (SUPPORTED_FORMATS.extensions.includes(extension)) {
+        return { valid: true };
+    }
+    
+    return { valid: false, reason: 'format' };
+}
+
+async function loadSupportedFormats() {
+    try {
+        const response = await fetch('/api/v1/transcription/supported-formats/');
+        if (response.ok) {
+            const data = await response.json();
+            
+            // Update supported formats
+            SUPPORTED_FORMATS.extensions = data.formats;
+            SUPPORTED_FORMATS.maxFileSize = data.max_file_size;
+            SUPPORTED_FORMATS.maxFileSizeMB = data.max_file_size_mb;
+            
+            // Generate MIME types from extensions
+            const mimeTypeMap = {
+                'mp3': 'audio/mpeg',
+                'mp4': 'audio/mp4', 
+                'mpeg': 'audio/mpeg',
+                'mpga': 'audio/mpeg',
+                'm4a': 'audio/x-m4a',
+                'wav': 'audio/wav',
+                'webm': 'audio/webm',
+                'ogg': 'audio/ogg',
+                'opus': 'audio/opus',
+                'aac': 'audio/aac',
+                'flac': 'audio/flac'
+            };
+            
+            SUPPORTED_FORMATS.mimeTypes = data.formats.map(ext => mimeTypeMap[ext]).filter(Boolean);
+            
+            // Create display list (uppercase for better readability)
+            SUPPORTED_FORMATS.displayList = data.formats.map(ext => ext.toUpperCase()).join(', ');
+            
+            // Update UI elements
+            updateFormatDisplays();
+            
+            console.log('Loaded supported formats:', SUPPORTED_FORMATS);
+        } else {
+            console.error('Failed to load supported formats, using defaults');
+            // Fallback to basic formats
+            SUPPORTED_FORMATS.extensions = ['mp3', 'wav', 'm4a'];
+            SUPPORTED_FORMATS.displayList = 'MP3, WAV, M4A';
+            SUPPORTED_FORMATS.maxFileSizeMB = 100;
+        }
+    } catch (error) {
+        console.error('Error loading supported formats:', error);
+    }
+}
+
+function updateFormatDisplays() {
+    // Update the drop zone display
+    const formatDisplay = document.querySelector('#dropContent p[style*="color: #999"]');
+    if (formatDisplay) {
+        formatDisplay.textContent = `Supported formats: ${SUPPORTED_FORMATS.displayList}`;
+    }
+    
+    // Update file input accept attribute
+    const fileInput = document.getElementById('fileInput');
+    if (fileInput) {
+        const acceptString = SUPPORTED_FORMATS.extensions.map(ext => `.${ext}`).join(',') + ',' +
+                            SUPPORTED_FORMATS.mimeTypes.join(',');
+        fileInput.setAttribute('accept', acceptString);
+    }
+}
+
+function showFormatError(rejectedFiles) {
+    const formatIssues = rejectedFiles.filter(r => r.reason === 'format');
+    const sizeIssues = rejectedFiles.filter(r => r.reason === 'size');
+    
+    let message = `❌ File validation failed!\n\n`;
+    
+    if (formatIssues.length > 0) {
+        const formatFileNames = formatIssues.map(r => r.file.name).join(', ');
+        message += `🚫 Unsupported format:\n${formatFileNames}\n\n`;
+    }
+    
+    if (sizeIssues.length > 0) {
+        const sizeDetails = sizeIssues.map(r => `${r.file.name} (${r.sizeMB}MB)`).join(', ');
+        message += `📏 File too large:\n${sizeDetails}\n\n`;
+    }
+    
+    message += `✅ Requirements:\n` +
+               `• Supported formats: ${SUPPORTED_FORMATS.displayList}\n` +
+               `• Maximum file size: ${SUPPORTED_FORMATS.maxFileSizeMB}MB\n\n` +
+               `Please check your files and try again.`;
+    
+    alert(message);
+}
+
+// Dark mode functionality
+function initDarkMode() {
+    const darkModeToggle = document.getElementById('darkModeToggle');
+    const isDarkMode = localStorage.getItem('darkMode') === 'true';
+    
+    // Set initial state
+    if (isDarkMode) {
+        document.body.classList.add('dark-mode');
+        darkModeToggle.checked = true;
+    }
+    
+    // Toggle dark mode
+    darkModeToggle.addEventListener('change', function() {
+        if (this.checked) {
+            document.body.classList.add('dark-mode');
+            localStorage.setItem('darkMode', 'true');
+        } else {
+            document.body.classList.remove('dark-mode');
+            localStorage.setItem('darkMode', 'false');
+        }
+    });
+}
+
+// File handling
+function setupFileUpload() {
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const browseBtn = document.getElementById('browseBtn');
+    
+    // Browse button click
+    browseBtn.addEventListener('click', () => fileInput.click());
+    
+    // File input change
+    fileInput.addEventListener('change', handleFileSelection);
+    
+    // Drag and drop
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = '#007cba';
+        dropZone.style.background = '#f0f8ff';
+    });
+    
+    dropZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = '#ddd';
+        dropZone.style.background = '#f9f9f9';
+    });
+    
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = '#ddd';
+        dropZone.style.background = '#f9f9f9';
+        
+        const allFiles = Array.from(e.dataTransfer.files);
+        const validFiles = [];
+        const rejectedFiles = [];
+        
+        allFiles.forEach(file => {
+            const validation = isValidAudioFile(file);
+            if (validation.valid) {
+                validFiles.push(file);
+            } else {
+                rejectedFiles.push({ file, reason: validation.reason, sizeMB: validation.sizeMB });
+            }
+        });
+        
+        if (rejectedFiles.length > 0) {
+            showFormatError(rejectedFiles);
+        }
+        
+        if (validFiles.length > 0) {
+            selectedFiles = [...selectedFiles, ...validFiles];
+            displaySelectedFiles();
+        }
+    });
+}
+
+function handleFileSelection(e) {
+    const allFiles = Array.from(e.target.files);
+    const validFiles = [];
+    const rejectedFiles = [];
+    
+    allFiles.forEach(file => {
+        const validation = isValidAudioFile(file);
+        if (validation.valid) {
+            validFiles.push(file);
+        } else {
+            rejectedFiles.push({ file, reason: validation.reason, sizeMB: validation.sizeMB });
+        }
+    });
+    
+    if (rejectedFiles.length > 0) {
+        showFormatError(rejectedFiles);
+    }
+    
+    if (validFiles.length > 0) {
+        selectedFiles = [...selectedFiles, ...validFiles];
+        displaySelectedFiles();
+    }
+    
+    e.target.value = ''; // Reset input
+}
+
+function displaySelectedFiles() {
+    const container = document.getElementById('selectedFiles');
+    const controls = document.getElementById('uploadControls');
+    
+    if (selectedFiles.length === 0) {
+        container.innerHTML = '';
+        controls.style.display = 'none';
+        return;
+    }
+    
+    controls.style.display = 'block';
+    container.innerHTML = `
+        <div style="border: 1px solid #ddd; border-radius: 5px; padding: 1rem; background: #f9f9f9;">
+            <h3 style="color: #333; margin-bottom: 1rem;">Selected Files (${selectedFiles.length})</h3>
+            ${selectedFiles.map((file, index) => `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid #eee;">
+                    <span style="color: #333;">${file.name} (${formatFileSize(file.size)})</span>
+                    <button type="button" onclick="removeFile(${index})" style="background: #c33; color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 3px; cursor: pointer;">Remove</button>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function removeFile(index) {
+    selectedFiles.splice(index, 1);
+    displaySelectedFiles();
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// Upload functionality
+function setupUploadControls() {
+    document.getElementById('uploadAllBtn').addEventListener('click', uploadAllFiles);
+    document.getElementById('clearAllBtn').addEventListener('click', () => {
+        selectedFiles = [];
+        displaySelectedFiles();
+    });
+}
+
+async function uploadAllFiles() {
+    if (selectedFiles.length === 0) return;
+    
+    const language = document.getElementById('language').value;
+    const uploadBtn = document.getElementById('uploadAllBtn');
+    const originalText = uploadBtn.textContent;
+    
+    uploadBtn.textContent = 'Uploading...';
+    uploadBtn.disabled = true;
+    
+    let successCount = 0;
+    
+    for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('language', language);
+        
+        try {
+            const response = await fetch('/api/v1/transcription/upload/', {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Token ' + localStorage.getItem('authToken')
+                },
+                body: formData
+            });
+            
+            if (response.ok) {
+                successCount++;
+            }
+        } catch (error) {
+            console.error(`Error uploading ${file.name}:`, error);
+        }
+        
+        // Update progress
+        uploadBtn.textContent = `Uploading... (${i + 1}/${selectedFiles.length})`;
+    }
+    
+    uploadBtn.textContent = originalText;
+    uploadBtn.disabled = false;
+    
+    const totalFiles = selectedFiles.length;
+    
+    // Clear selected files and refresh list
+    selectedFiles = [];
+    displaySelectedFiles();
+    loadAudioFiles();
+    
+    alert(`Successfully uploaded ${successCount} of ${totalFiles} files.`);
+}
+
+// Load and display uploaded files
+async function loadAudioFiles() {
+    try {
+        const response = await fetch('/api/v1/transcription/files/', {
+            headers: {
+                'Authorization': 'Token ' + localStorage.getItem('authToken')
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            uploadedFiles = data.results || data;
+            displayAudioFiles(uploadedFiles);
+        } else {
+            document.getElementById('audioFiles').innerHTML = '<p style="color: #c33;">Failed to load files</p>';
+        }
+    } catch (error) {
+        document.getElementById('audioFiles').innerHTML = '<p style="color: #c33;">Error loading files</p>';
+    }
+}
+
+function displayAudioFiles(files) {
+    const container = document.getElementById('audioFiles');
+    const controls = document.getElementById('transcriptionControls');
+    
+    if (files.length === 0) {
+        container.innerHTML = '<p style="color: #666;">No files uploaded yet.</p>';
+        controls.style.display = 'none';
+        return;
+    }
+    
+    // Show transcription controls if there are files
+    controls.style.display = 'block';
+    
+    container.innerHTML = files.map(file => `
+        <div style="border: 1px solid #ddd; border-radius: 5px; padding: 1rem; margin-bottom: 1rem;" data-file-id="${file.id}">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
+                <div style="display: flex; align-items: center;">
+                    ${!file.transcription ? `<input type="checkbox" class="file-checkbox" value="${file.id}" style="margin-right: 0.5rem;">` : ''}
+                    <h3 style="margin: 0; color: #333;">${file.original_filename}</h3>
+                    ${file.transcription ? `
+                        <span style="margin-left: 1rem; color: #28a745; font-size: 0.9rem; cursor: pointer; text-decoration: underline;" onclick="openAudioPlayer(${file.id})">🎵 Open audio player and full transcription</span>
+                        <span style="margin-left: 1rem; color: #007cba; font-size: 0.9rem; cursor: pointer; text-decoration: underline;" onclick="downloadTranscription(${file.id}, '${file.original_filename.replace(/'/g, "\\'")}')">📄 Download transcription</span>
+                    ` : ''}
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    ${file.status === 'ready' && !file.transcription ? 
+                        `<button onclick="transcribeFile(${file.id})" class="btn" style="font-size: 0.8rem; padding: 0.25rem 0.5rem;">Transcribe</button>` : ''}
+                    ${file.status === 'failed' ? 
+                        `<button onclick="retranscribeFile(${file.id})" class="btn" style="font-size: 0.8rem; padding: 0.25rem 0.5rem;">Retry</button>` : ''}
+                    ${file.status === 'processing' ?
+                        `<span style="color: #f93; font-size: 0.8rem; font-weight: bold;" id="processing-status-${file.id}">⏳ Processing...</span>` : ''}
+                    ${file.transcription ? `<span style="color: #28a745; font-size: 0.8rem; font-weight: bold;">✓ Transcribed</span>` : ''}
+                    <button onclick="deleteFile(${file.id}, '${file.original_filename.replace(/'/g, "\\'")}')" class="btn" style="font-size: 0.8rem; padding: 0.25rem 0.5rem; background: #dc3545; color: white; white-space: nowrap; min-width: auto;">🗑️ Delete</button>
+                </div>
+            </div>
+            <p style="color: #666; font-size: 0.9rem;">Status: <span style="color: ${getStatusColor(file.status)}">${file.status}</span></p>
+            <p style="color: #666; font-size: 0.9rem;">Uploaded: ${new Date(file.created_at).toLocaleString()}</p>
+        </div>
+    `).join('');
+}
+
+function getStatusColor(status) {
+    switch(status) {
+        case 'ready': return '#007cba';
+        case 'processing': return '#f93';
+        case 'completed': return '#3c3';
+        case 'failed': return '#c33';
+        default: return '#666';
+    }
+}
+
+// Transcription controls
+function setupTranscriptionControls() {
+    document.getElementById('transcribeSelectedBtn').addEventListener('click', transcribeSelected);
+    document.getElementById('transcribeAllBtn').addEventListener('click', transcribeAll);
+    document.getElementById('selectAllBtn').addEventListener('click', selectAll);
+    document.getElementById('deselectAllBtn').addEventListener('click', deselectAll);
+    document.getElementById('deleteAllBtn').addEventListener('click', deleteAllFiles);
+}
+
+function selectAll() {
+    document.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = true);
+}
+
+function deselectAll() {
+    document.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = false);
+}
+
+function getSelectedFileIds() {
+    return Array.from(document.querySelectorAll('.file-checkbox:checked')).map(cb => parseInt(cb.value));
+}
+
+function openAudioPlayer(fileId) {
+    window.location.href = `/audio-player/${fileId}/`;
+}
+
+async function downloadTranscription(fileId, filename) {
+    try {
+        const response = await fetch(`/api/v1/transcription/files/${fileId}/transcription/`, {
+            headers: {
+                'Authorization': 'Token ' + localStorage.getItem('authToken')
+            }
+        });
+        
+        if (response.ok) {
+            const transcriptionData = await response.json();
+            
+            // Create downloadable text content
+            const textContent = `Transcription for: ${filename}\n` +
+                               `Generated on: ${new Date().toLocaleString()}\n` +
+                               `Language: ${transcriptionData.language || 'Auto-detected'}\n` +
+                               `Confidence Score: ${transcriptionData.confidence_score ? (transcriptionData.confidence_score * 100).toFixed(1) + '%' : 'N/A'}\n` +
+                               `Processing Time: ${transcriptionData.processing_time ? transcriptionData.processing_time.toFixed(2) + 's' : 'N/A'}\n\n` +
+                               `--- TRANSCRIPTION ---\n\n${transcriptionData.text}`;
+            
+            // Create and trigger download
+            const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${filename.replace(/\.[^/.]+$/, '')}_transcription.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            
+        } else {
+            const errorData = await response.json();
+            alert(`Failed to download transcription: ${errorData.error || 'Unknown error'}`);
+        }
+    } catch (error) {
+        console.error('Download error:', error);
+        alert('Failed to download transcription. Please try again.');
+    }
+}
+
+async function transcribeSelected() {
+    const selectedIds = getSelectedFileIds();
+    if (selectedIds.length === 0) {
+        alert('Please select files to transcribe.');
+        return;
+    }
+    
+    const transcribeBtn = document.getElementById('transcribeSelectedBtn');
+    const originalText = transcribeBtn.textContent;
+    transcribeBtn.textContent = 'Processing...';
+    transcribeBtn.disabled = true;
+    
+    try {
+        for (const fileId of selectedIds) {
+            await transcribeFile(fileId);
+        }
+        
+        // Start polling for status updates
+        startPollingForUpdates();
+        
+    } finally {
+        transcribeBtn.textContent = originalText;
+        transcribeBtn.disabled = false;
+    }
+}
+
+async function transcribeAll() {
+    const eligibleFiles = uploadedFiles.filter(file => 
+        file.status === 'ready' && !file.transcription
+    );
+    
+    if (eligibleFiles.length === 0) {
+        alert('No files ready for transcription.');
+        return;
+    }
+    
+    const transcribeBtn = document.getElementById('transcribeAllBtn');
+    const originalText = transcribeBtn.textContent;
+    transcribeBtn.textContent = 'Processing...';
+    transcribeBtn.disabled = true;
+    
+    try {
+        for (const file of eligibleFiles) {
+            await transcribeFile(file.id);
+        }
+        
+        // Start polling for status updates
+        startPollingForUpdates();
+        
+    } finally {
+        transcribeBtn.textContent = originalText;
+        transcribeBtn.disabled = false;
+    }
+}
+
+async function transcribeFile(fileId) {
+    try {
+        // Immediately update the UI to show processing status
+        const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
+        if (fileElement) {
+            const statusSpan = fileElement.querySelector('span[style*="color"]');
+            if (statusSpan) {
+                statusSpan.textContent = 'processing';
+                statusSpan.style.color = getStatusColor('processing');
+            }
+            
+            // Update the action buttons with enhanced processing message
+            const buttonContainer = fileElement.querySelector('div[style*="display: flex"]');
+            if (buttonContainer) {
+                buttonContainer.innerHTML = '<span style="color: #f93; font-size: 0.8rem; font-weight: bold;" id="processing-status-' + fileId + '">⏳ Processing... (Checking file duration)</span><button onclick="deleteFile(' + fileId + ', \'' + fileElement.querySelector('h3').textContent.replace(/'/g, "\\'") + '\')" class="btn" style="font-size: 0.8rem; padding: 0.25rem 0.5rem; background: #dc3545; color: white; margin-left: 0.5rem; white-space: nowrap; min-width: auto;">🗑️ Delete</button>';
+            }
+        }
+        
+        const response = await fetch(`/api/v1/transcription/files/${fileId}/retranscribe/`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Token ' + localStorage.getItem('authToken'),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ language: document.getElementById('language').value || 'auto' })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.error(`Failed to transcribe file ${fileId}:`, errorData);
+            throw new Error(errorData.error || 'Transcription failed');
+        }
+        
+        const result = await response.json();
+        console.log(`Transcription started for file ${fileId}:`, result);
+        
+        // Start polling immediately for this file
+        startPollingForUpdates();
+        
+        return result;
+        
+    } catch (error) {
+        console.error(`Error transcribing file ${fileId}:`, error);
+        alert(`Error transcribing file: ${error.message}`);
+        // Refresh the UI to show error state
+        loadAudioFiles();
+        throw error;
+    }
+}
+
+async function retranscribeFile(fileId) {
+    try {
+        await transcribeFile(fileId);
+        startPollingForUpdates();
+    } catch (error) {
+        // Error already handled in transcribeFile
+    }
+}
+
+async function deleteFile(fileId, filename) {
+    if (!confirm(`Are you sure you want to delete "${filename}"?\n\nThis will permanently delete the file and its transcription. This action cannot be undone.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/v1/transcription/files/${fileId}/`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': 'Token ' + localStorage.getItem('authToken'),
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            // Remove the file from the UI immediately
+            const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
+            if (fileElement) {
+                fileElement.style.transition = 'opacity 0.3s ease';
+                fileElement.style.opacity = '0';
+                setTimeout(() => {
+                    fileElement.remove();
+                    // Refresh the file list to update controls visibility
+                    loadAudioFiles();
+                }, 300);
+            }
+        } else {
+            const errorData = await response.json();
+            alert(`Failed to delete file: ${errorData.error || 'Unknown error'}`);
+        }
+    } catch (error) {
+        console.error('Delete error:', error);
+        alert('Failed to delete file. Please try again.');
+    }
+}
+
+async function deleteAllFiles() {
+    if (uploadedFiles.length === 0) {
+        alert('No files to delete.');
+        return;
+    }
+    
+    const confirmMessage = `⚠️ WARNING: DELETE ALL FILES\n\nThis will permanently delete ALL ${uploadedFiles.length} audio files and their transcriptions.\n\nThis action cannot be undone!\n\nType "DELETE ALL" to confirm:`;
+    const userInput = prompt(confirmMessage);
+    
+    if (userInput !== 'DELETE ALL') {
+        alert('Delete operation cancelled. Files were not deleted.');
+        return;
+    }
+    
+    const deleteBtn = document.getElementById('deleteAllBtn');
+    const originalText = deleteBtn.textContent;
+    deleteBtn.textContent = 'Deleting...';
+    deleteBtn.disabled = true;
+    
+    let successCount = 0;
+    let failureCount = 0;
+    
+    try {
+        for (const file of uploadedFiles) {
+            try {
+                const response = await fetch(`/api/v1/transcription/files/${file.id}/`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': 'Token ' + localStorage.getItem('authToken'),
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    successCount++;
+                } else {
+                    failureCount++;
+                    console.error(`Failed to delete file ${file.original_filename}`);
+                }
+            } catch (error) {
+                failureCount++;
+                console.error(`Error deleting file ${file.original_filename}:`, error);
+            }
+            
+            // Update progress
+            deleteBtn.textContent = `Deleting... (${successCount + failureCount}/${uploadedFiles.length})`;
+        }
+        
+        // Refresh the file list
+        await loadAudioFiles();
+        
+        // Show summary
+        if (failureCount === 0) {
+            alert(`✅ Successfully deleted all ${successCount} files.`);
+        } else {
+            alert(`⚠️ Delete completed:\n- Successfully deleted: ${successCount} files\n- Failed to delete: ${failureCount} files\n\nPlease check the console for details about failed deletions.`);
+        }
+        
+    } finally {
+        deleteBtn.textContent = originalText;
+        deleteBtn.disabled = false;
+    }
+}
+
+// Real-time polling for status updates
+let pollingInterval = null;
+let pollingCount = 0;
+
+function updateProcessingStatus(fileId, duration) {
+    const statusElement = document.getElementById(`processing-status-${fileId}`);
+    if (statusElement && duration) {
+        if (duration > 600) { // 10 minutes
+            const segments = Math.ceil(duration / 600);
+            statusElement.textContent = `⏳ Processing long file (${Math.floor(duration/60)}min) - Split into ${segments} segments`;
+        } else {
+            statusElement.textContent = `⏳ Processing... (${Math.floor(duration/60)}min${duration % 60 > 0 ? ` ${Math.floor(duration % 60)}s` : ''})`;
+        }
+    }
+}
+
+function startPollingForUpdates() {
+    // Clear any existing polling
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+    }
+    
+    console.log('Starting polling for transcription updates...');
+    pollingCount = 0;
+    
+    // Poll every 2 seconds for updates
+    pollingInterval = setInterval(async () => {
+        await loadAudioFiles();
+        pollingCount++;
+        
+        // Update processing status for long files
+        const processingFiles = uploadedFiles.filter(file => file.status === 'processing');
+        processingFiles.forEach(file => {
+            if (file.duration) {
+                updateProcessingStatus(file.id, file.duration);
+            }
+        });
+        
+        console.log(`Polling: ${processingFiles.length} files still processing (${pollingCount} polls)`);
+        
+        if (processingFiles.length === 0) {
+            console.log('All transcriptions completed, stopping polling');
+            clearInterval(pollingInterval);
+            pollingInterval = null;
+            pollingCount = 0;
+        }
+    }, 2000);
+}
+
+function stopPolling() {
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+    }
+}
+
+// Initialize everything
+document.addEventListener('DOMContentLoaded', async function() {
+    initDarkMode();
+    await loadSupportedFormats();
+    setupFileUpload();
+    setupUploadControls();
+    setupTranscriptionControls();
+    loadAudioFiles();
+    
+    // Check for processing files and start polling if needed
+    setTimeout(() => {
+        const processingFiles = uploadedFiles.filter(file => file.status === 'processing');
+        if (processingFiles.length > 0) {
+            startPollingForUpdates();
+        }
+    }, 1000);
+});
+
+// Clean up polling when page unloads
+window.addEventListener('beforeunload', function() {
+    stopPolling();
+});
+</script>
+{% endblock %}
