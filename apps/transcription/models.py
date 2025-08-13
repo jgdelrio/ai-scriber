@@ -82,12 +82,15 @@ class TranscriptionSegment(models.Model):
     end_time = models.FloatField()
     text = models.TextField()
     confidence_score = models.FloatField(null=True, blank=True)
+    speaker_id = models.CharField(max_length=50, null=True, blank=True)
+    speaker_label = models.CharField(max_length=100, null=True, blank=True)
 
     class Meta:
         ordering = ["start_time"]
 
     def __str__(self):
-        return f"Segment {self.start_time}-{self.end_time}s"
+        speaker_info = f" ({self.speaker_label})" if self.speaker_label else ""
+        return f"Segment {self.start_time}-{self.end_time}s{speaker_info}"
 
 
 class TranscriptionWord(models.Model):
@@ -101,6 +104,7 @@ class TranscriptionWord(models.Model):
     end_time = models.FloatField()
     confidence_score = models.FloatField(null=True, blank=True)
     word_index = models.PositiveIntegerField()  # Position in the full text
+    speaker_id = models.CharField(max_length=50, null=True, blank=True)
 
     class Meta:
         ordering = ["word_index"]

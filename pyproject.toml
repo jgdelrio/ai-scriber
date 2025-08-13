@@ -16,6 +16,7 @@ dependencies = [
     "pydub>=0.25.1",
     "python-dotenv>=1.1.1",
     "librosa>=0.11.0",
+    "requests>=2.32.4",
 ]
 
 [project.optional-dependencies]

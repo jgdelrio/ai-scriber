@@ -153,9 +153,19 @@ OPENAI_CALL_TIMEOUT = 600  # 10 minutes timeout for OpenAI API calls
 # OpenAI API settings
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 
+# Speaker Detection Service settings
+SPEAKER_DETECTION_HOST = os.environ.get('SPEAKER_DETECTION_HOST', '')
+SPEAKER_DETECTION_PORT = os.environ.get('SPEAKER_DETECTION_PORT', '')
+
 # Log API key status at startup
 logger = logging.getLogger(__name__)
 if OPENAI_API_KEY:
     logger.info("✅ OpenAI API key loaded successfully - Transcription service enabled")
 else:
     logger.info("ℹ️  OpenAI API key not available - Mock transcription service for testing")
+
+# Log speaker detection service configuration
+if SPEAKER_DETECTION_HOST and SPEAKER_DETECTION_PORT:
+    logger.info(f"🔊 Speaker detection service configured at {SPEAKER_DETECTION_HOST}:{SPEAKER_DETECTION_PORT}")
+else:
+    logger.info("ℹ️  Speaker detection service not configured - Transcriptions will not include speaker separation")

@@ -22,6 +22,7 @@ dependencies = [
     { name = "pydub" },
     { name = "python-decouple" },
     { name = "python-dotenv" },
+    { name = "requests" },
 ]
 
 [package.optional-dependencies]
@@ -65,6 +66,7 @@ requires-dist = [
     { name = "pydub", specifier = ">=0.25.1" },
     { name = "python-decouple", specifier = ">=3.8" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
+    { name = "requests", specifier = ">=2.32.4" },
     { name = "sentry-sdk", marker = "extra == 'prod'", specifier = ">=1.28.0" },
     { name = "whitenoise", marker = "extra == 'prod'", specifier = ">=6.5.0" },
 ]

@@ -172,6 +172,10 @@ class TranscriptionService:
             logger.info(
                 f"Successfully transcribed audio file {audio_file_id} in {processing_time:.2f}s"
             )
+            
+            # Attempt speaker detection if service is available
+            self._process_speaker_detection(transcription)
+            
             return transcription
 
         except AudioFile.DoesNotExist:
@@ -864,3 +868,65 @@ class TranscriptionService:
         except Exception as e:
             logger.warning(f"Pydub fallback also failed: {str(e)}, using target")
             return target_split_ms
+    
+    def _process_speaker_detection(self, transcription):
+        """Process speaker detection for the completed transcription."""
+        try:
+            from .speaker_detection import speaker_detection_service
+            
+            if not speaker_detection_service.is_enabled():
+                logger.debug("Speaker detection service not enabled, skipping")
+                return
+            
+            logger.info(f"Processing speaker detection for transcription {transcription.id}")
+            
+            # Prepare transcription data for speaker detection
+            words_data = []
+            for word in transcription.words.all():
+                words_data.append({
+                    'word': word.word,
+                    'start': word.start_time,
+                    'end': word.end_time,
+                    'confidence': word.confidence_score or 1.0,
+                    'word_index': word.word_index
+                })
+            
+            segments_data = []
+            for segment in transcription.segments.all():
+                segments_data.append({
+                    'start_time': segment.start_time,
+                    'end_time': segment.end_time,
+                    'text': segment.text,
+                    'confidence': segment.confidence_score or 0.95
+                })
+            
+            transcription_data = {
+                'text': transcription.text,
+                'language': transcription.language,
+                'words': words_data,
+                'segments': segments_data
+            }
+            
+            # Send to speaker detection service
+            speaker_result = speaker_detection_service.detect_speakers(
+                transcription.audio_file, 
+                transcription_data
+            )
+            
+            if speaker_result:
+                # Update transcription with speaker information
+                success = speaker_detection_service.update_transcription_with_speakers(
+                    transcription, speaker_result
+                )
+                
+                if success:
+                    logger.info(f"✅ Successfully updated transcription {transcription.id} with speaker detection")
+                else:
+                    logger.warning(f"Failed to update transcription {transcription.id} with speaker data")
+            else:
+                logger.warning(f"Speaker detection failed for transcription {transcription.id}")
+                
+        except Exception as e:
+            logger.error(f"Error in speaker detection processing: {str(e)}")
+            # Don't fail the transcription if speaker detection fails
+            logger.exception("Full traceback for speaker detection error:")
