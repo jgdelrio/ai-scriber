@@ -71,3 +71,92 @@ This service provides secure user authentication, file upload capabilities, and 
    git clone <repository-url>
    cd ai-scriber
    ```
+
+2. **Install dependencies with uv**
+   ```bash
+   # Install all dependencies including development tools
+   uv sync --extra dev
+   ```
+
+3. **Set up environment variables**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configuration
+   # Required: Add your OpenAI API key
+   # Optional: Configure speaker detection service
+   ```
+
+4. **Run database migrations**
+   ```bash
+   uv run python manage.py makemigrations
+   uv run python manage.py migrate
+   ```
+
+5. **Create a superuser**
+   ```bash
+   uv run python manage.py createsuperuser
+   ```
+
+6. **Start the development server**
+   ```bash
+   uv run python manage.py runserver 8080
+   ```
+
+The API will be available at `http://localhost:8080/`
+
+### Using Docker
+
+1. **Start all services**
+   ```bash
+   docker-compose up -d
+   ```
+
+2. **Run migrations in the container**
+   ```bash
+   docker-compose exec web uv run python manage.py migrate
+   ```
+
+3. **Create superuser in the container**
+   ```bash
+   docker-compose exec web uv run python manage.py createsuperuser
+   ```
+
+## Testing
+
+### Run Tests
+```bash
+# Run all tests
+uv run pytest
+
+# Run tests with coverage
+uv run pytest --cov=apps
+
+# Run specific test file
+uv run pytest apps/transcription/tests/test_models.py
+
+# Run tests with verbose output
+uv run pytest -v
+```
+
+### Test Structure
+- `apps/*/tests/` - Test files for each Django app
+- `tests/` - Project-wide integration tests
+- `pytest.ini` - Pytest configuration (if needed)
+
+
+## Development
+
+### Code Quality Tools
+```bash
+# Format code with Black
+uv run black .
+
+# Sort imports with isort
+uv run isort .
+
+# Lint code with flake8
+uv run flake8
+```
+
+
+
