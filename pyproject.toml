@@ -1,0 +1,43 @@
+[project]
+name = "ai-scriber"
+version = "0.1.0"
+description = "Django-based service to transcribe audio files to text"
+readme = "README.md"
+requires-python = ">=3.12.3"
+dependencies = [
+    "django>=4.2.0,<5.0.0",
+    "djangorestframework>=3.14.0",
+    "django-cors-headers>=4.0.0",
+    "Pillow>=10.0.0",
+    "psycopg2-binary>=2.9.0",
+    "python-decouple>=3.8",
+    "openai>=1.99.9",
+    "gunicorn>=23.0.0",
+    "pydub>=0.25.1",
+    "python-dotenv>=1.1.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "django-debug-toolbar>=4.1.0",
+    "django-extensions>=3.2.0",
+    "ipython>=8.0.0",
+    "pytest>=7.0.0",
+    "pytest-django>=4.5.0",
+    "pytest-cov>=4.0.0",
+    "factory-boy>=3.2.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "isort>=5.12.0",
+]
+prod = [
+    "gunicorn>=21.0.0",
+    "whitenoise>=6.5.0",
+    "sentry-sdk>=1.28.0",
+]
+
+[dependency-groups]
+dev = [
+    "pyhamcrest>=2.1.0",
+    "pytest>=8.4.1",
+]

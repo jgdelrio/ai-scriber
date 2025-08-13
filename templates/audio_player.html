@@ -1,0 +1,138 @@
+{% extends 'base.html' %}
+
+{% block title %}Audio Player - AI Scriber{% endblock %}
+
+{% block body_class %}{% endblock %}
+
+{% block container_class %}dashboard-container{% endblock %}
+
+{% block content %}
+<div style="padding: 2rem; min-height: calc(100vh - 4rem);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+        <h1 style="color: #333; margin: 0;">🎙️ {{ audio_file.original_filename }}</h1>
+        <a href="{% url 'dashboard' %}" style="color: #007cba; text-decoration: none; font-weight: 500;">← Back to Dashboard</a>
+    </div>
+    
+    <!-- Audio Player Controls -->
+    <div id="audioPlayerSection" style="background: #f9f9f9; border-radius: 10px; padding: 2rem; margin-bottom: 2rem;">
+        <audio id="audioPlayer" controls style="width: 100%; margin-bottom: 1rem;">
+            <source src="{{ audio_file.file.url }}" type="audio/mpeg">
+            Your browser does not support the audio element.
+        </audio>
+        
+        <!-- Custom Controls -->
+        <div style="display: flex; justify-content: center; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+            <button id="backwardBtn" class="btn" style="width: auto; padding: 0.5rem 1rem;">⏪ -10s</button>
+            <button id="playPauseBtn" class="btn" style="width: auto; padding: 0.5rem 1rem;">▶️ Play</button>
+            <button id="forwardBtn" class="btn" style="width: auto; padding: 0.5rem 1rem;">⏩ +10s</button>
+        </div>
+        
+        <!-- Progress Info -->
+        <div style="text-align: center; color: #666;">
+            <span id="currentTime">0:00</span> / <span id="duration">0:00</span>
+        </div>
+    </div>
+    
+    <!-- Transcription -->
+    <div style="background: white; border: 1px solid #ddd; border-radius: 10px; padding: 2rem;">
+        <h2 style="color: #333; margin-bottom: 1rem;">Transcription</h2>
+        <div id="transcriptionText" style="line-height: 1.8; font-size: 1.1rem; color: #333;">
+            {% if transcription %}
+                {{ transcription.text }}
+            {% else %}
+                <p style="color: #666;">No transcription available for this file.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+// Audio player functionality
+const audioPlayer = document.getElementById('audioPlayer');
+const playPauseBtn = document.getElementById('playPauseBtn');
+const backwardBtn = document.getElementById('backwardBtn');
+const forwardBtn = document.getElementById('forwardBtn');
+const currentTimeSpan = document.getElementById('currentTime');
+const durationSpan = document.getElementById('duration');
+const transcriptionText = document.getElementById('transcriptionText');
+
+let isPlaying = false;
+
+// Audio event listeners
+audioPlayer.addEventListener('loadedmetadata', function() {
+    durationSpan.textContent = formatTime(audioPlayer.duration);
+});
+
+audioPlayer.addEventListener('timeupdate', function() {
+    currentTimeSpan.textContent = formatTime(audioPlayer.currentTime);
+    updateTranscriptionHighlight(audioPlayer.currentTime);
+});
+
+audioPlayer.addEventListener('play', function() {
+    isPlaying = true;
+    playPauseBtn.textContent = '⏸️ Pause';
+});
+
+audioPlayer.addEventListener('pause', function() {
+    isPlaying = false;
+    playPauseBtn.textContent = '▶️ Play';
+});
+
+// Control button event listeners
+playPauseBtn.addEventListener('click', function() {
+    if (isPlaying) {
+        audioPlayer.pause();
+    } else {
+        audioPlayer.play();
+    }
+});
+
+backwardBtn.addEventListener('click', function() {
+    audioPlayer.currentTime = Math.max(0, audioPlayer.currentTime - 10);
+});
+
+forwardBtn.addEventListener('click', function() {
+    audioPlayer.currentTime = Math.min(audioPlayer.duration, audioPlayer.currentTime + 10);
+});
+
+// Format time helper
+function formatTime(seconds) {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+
+// Word-level highlighting (basic implementation)
+function updateTranscriptionHighlight(currentTime) {
+    // This is a basic implementation. For production, you'd need word-level timestamps
+    // from the transcription service (like OpenAI Whisper's word_timestamps option)
+    
+    const words = transcriptionText.textContent.split(' ');
+    const totalDuration = audioPlayer.duration;
+    const averageWordsPerSecond = words.length / totalDuration;
+    const currentWordIndex = Math.floor(currentTime * averageWordsPerSecond);
+    
+    // Create highlighted version
+    const highlightedWords = words.map((word, index) => {
+        if (index === currentWordIndex) {
+            return `<span style="background-color: #ffeb3b; padding: 0.2rem; border-radius: 3px;">${word}</span>`;
+        } else if (index < currentWordIndex) {
+            return `<span style="color: #666;">${word}</span>`;
+        } else {
+            return word;
+        }
+    });
+    
+    transcriptionText.innerHTML = highlightedWords.join(' ');
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    // If there's transcription text, split it into words for highlighting
+    if (transcriptionText.textContent.trim()) {
+        // Initial highlighting setup
+        updateTranscriptionHighlight(0);
+    }
+});
+</script>
+{% endblock %}

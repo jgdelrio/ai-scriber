@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+
+{% block title %}Login - AI Scriber{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h1>🎙️ AI Scriber</h1>
+    <p>Transcribe your audio files to text</p>
+</div>
+
+{% if error %}
+<div class="alert alert-error">
+    {{ error }}
+</div>
+{% endif %}
+
+{% if success %}
+<div class="alert alert-success">
+    {{ success }}
+</div>
+{% endif %}
+
+<form method="post">
+    {% csrf_token %}
+    <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required value="{{ email|default:'' }}">
+    </div>
+    
+    <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required>
+    </div>
+    
+    <button type="submit" class="btn">Login</button>
+</form>
+
+<div class="links">
+    <a href="{% url 'register' %}">Don't have an account? Register here</a>
+</div>
+{% endblock %}

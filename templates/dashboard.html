@@ -1,0 +1,466 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - AI Scriber{% endblock %}
+
+{% block body_class %}{% endblock %}
+
+{% block container_class %}dashboard-container{% endblock %}
+
+{% block content %}
+<div class="dashboard-content">
+    <div class="upload-section">
+        <div class="header">
+            <h1>🎙️ AI Scriber</h1>
+            <p>Welcome, {{ user.first_name }}!</p>
+        </div>
+    <h2 style="color: #333; margin-bottom: 1rem;">Upload Audio Files</h2>
+    
+    <!-- Drop Zone -->
+    <div id="dropZone" style="border: 2px dashed #ddd; border-radius: 10px; padding: 2rem; text-align: center; margin-bottom: 1rem; background: #f9f9f9; transition: all 0.3s;">
+        <div id="dropContent">
+            <p style="color: #666; font-size: 1.1rem; margin-bottom: 1rem;">📁 Drop audio files here or click to browse</p>
+            <input type="file" id="fileInput" multiple accept="audio/*" style="display: none;">
+            <button type="button" id="browseBtn" class="btn" style="margin-bottom: 1rem;">Choose Files</button>
+        </div>
+    </div>
+    
+    <!-- Selected Files Display -->
+    <div id="selectedFiles" style="margin-bottom: 1rem;"></div>
+    
+    <!-- Language Selection -->
+    <div class="form-group" style="margin-bottom: 1rem;">
+        <label for="language">Language for all files</label>
+        <select id="language" name="language" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 5px;">
+            <option value="auto">Auto-detect</option>
+            <option value="en">English</option>
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+            <option value="it">Italian</option>
+            <option value="pt">Portuguese</option>
+            <option value="ja">Japanese</option>
+            <option value="ko">Korean</option>
+            <option value="zh">Chinese</option>
+        </select>
+    </div>
+    
+    <!-- Upload Controls -->
+    <div id="uploadControls" style="display: none;">
+        <button type="button" id="uploadAllBtn" class="btn" style="margin-right: 1rem;">Upload All Files</button>
+        <button type="button" id="clearAllBtn" class="btn" style="background: #666;">Clear All</button>
+    </div>
+    
+    <!-- Transcription Controls -->
+    <div id="transcriptionControls" style="margin-top: 2rem; display: none;">
+        <h3 style="color: #333; margin-bottom: 1rem;">Transcription Options</h3>
+        <button type="button" id="transcribeSelectedBtn" class="btn" style="margin-bottom: 0.5rem;">Transcribe Selected</button>
+        <button type="button" id="transcribeAllBtn" class="btn" style="margin-bottom: 0.5rem;">Transcribe All</button>
+        <button type="button" id="selectAllBtn" class="btn" style="background: #666; margin-bottom: 0.5rem;">Select All</button>
+        <button type="button" id="deselectAllBtn" class="btn" style="background: #666; margin-bottom: 0.5rem;">Deselect All</button>
+    </div>
+    
+    <div class="links" style="margin-top: 2rem;">
+        <a href="{% url 'web_logout' %}">Logout</a>
+    </div>
+</div>
+
+<div class="files-section">
+    <h2 style="color: #333; margin-bottom: 1rem;">Your Audio Files</h2>
+    <div id="audioFiles">
+        <p style="color: #666;">Loading your files...</p>
+    </div>
+</div>
+</div>
+
+<script>
+// Store auth token from session
+const authToken = '{{ auth_token }}';
+if (authToken) {
+    localStorage.setItem('authToken', authToken);
+}
+
+// Global variables
+let selectedFiles = [];
+let uploadedFiles = [];
+
+// File handling
+function setupFileUpload() {
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const browseBtn = document.getElementById('browseBtn');
+    
+    // Browse button click
+    browseBtn.addEventListener('click', () => fileInput.click());
+    
+    // File input change
+    fileInput.addEventListener('change', handleFileSelection);
+    
+    // Drag and drop
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = '#007cba';
+        dropZone.style.background = '#f0f8ff';
+    });
+    
+    dropZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = '#ddd';
+        dropZone.style.background = '#f9f9f9';
+    });
+    
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = '#ddd';
+        dropZone.style.background = '#f9f9f9';
+        
+        const files = Array.from(e.dataTransfer.files).filter(file => 
+            file.type.startsWith('audio/') || 
+            ['mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'wav', 'webm'].includes(file.name.split('.').pop().toLowerCase())
+        );
+        
+        if (files.length > 0) {
+            selectedFiles = [...selectedFiles, ...files];
+            displaySelectedFiles();
+        }
+    });
+}
+
+function handleFileSelection(e) {
+    const files = Array.from(e.target.files);
+    selectedFiles = [...selectedFiles, ...files];
+    displaySelectedFiles();
+    e.target.value = ''; // Reset input
+}
+
+function displaySelectedFiles() {
+    const container = document.getElementById('selectedFiles');
+    const controls = document.getElementById('uploadControls');
+    
+    if (selectedFiles.length === 0) {
+        container.innerHTML = '';
+        controls.style.display = 'none';
+        return;
+    }
+    
+    controls.style.display = 'block';
+    container.innerHTML = `
+        <div style="border: 1px solid #ddd; border-radius: 5px; padding: 1rem; background: #f9f9f9;">
+            <h3 style="color: #333; margin-bottom: 1rem;">Selected Files (${selectedFiles.length})</h3>
+            ${selectedFiles.map((file, index) => `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid #eee;">
+                    <span style="color: #333;">${file.name} (${formatFileSize(file.size)})</span>
+                    <button type="button" onclick="removeFile(${index})" style="background: #c33; color: white; border: none; padding: 0.25rem 0.5rem; border-radius: 3px; cursor: pointer;">Remove</button>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function removeFile(index) {
+    selectedFiles.splice(index, 1);
+    displaySelectedFiles();
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// Upload functionality
+function setupUploadControls() {
+    document.getElementById('uploadAllBtn').addEventListener('click', uploadAllFiles);
+    document.getElementById('clearAllBtn').addEventListener('click', () => {
+        selectedFiles = [];
+        displaySelectedFiles();
+    });
+}
+
+async function uploadAllFiles() {
+    if (selectedFiles.length === 0) return;
+    
+    const language = document.getElementById('language').value;
+    const uploadBtn = document.getElementById('uploadAllBtn');
+    const originalText = uploadBtn.textContent;
+    
+    uploadBtn.textContent = 'Uploading...';
+    uploadBtn.disabled = true;
+    
+    let successCount = 0;
+    
+    for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('language', language);
+        
+        try {
+            const response = await fetch('/api/v1/transcription/upload/', {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Token ' + localStorage.getItem('authToken')
+                },
+                body: formData
+            });
+            
+            if (response.ok) {
+                successCount++;
+            }
+        } catch (error) {
+            console.error(`Error uploading ${file.name}:`, error);
+        }
+        
+        // Update progress
+        uploadBtn.textContent = `Uploading... (${i + 1}/${selectedFiles.length})`;
+    }
+    
+    uploadBtn.textContent = originalText;
+    uploadBtn.disabled = false;
+    
+    const totalFiles = selectedFiles.length;
+    
+    // Clear selected files and refresh list
+    selectedFiles = [];
+    displaySelectedFiles();
+    loadAudioFiles();
+    
+    alert(`Successfully uploaded ${successCount} of ${totalFiles} files.`);
+}
+
+// Load and display uploaded files
+async function loadAudioFiles() {
+    try {
+        const response = await fetch('/api/v1/transcription/files/', {
+            headers: {
+                'Authorization': 'Token ' + localStorage.getItem('authToken')
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            uploadedFiles = data.results || data;
+            displayAudioFiles(uploadedFiles);
+        } else {
+            document.getElementById('audioFiles').innerHTML = '<p style="color: #c33;">Failed to load files</p>';
+        }
+    } catch (error) {
+        document.getElementById('audioFiles').innerHTML = '<p style="color: #c33;">Error loading files</p>';
+    }
+}
+
+function displayAudioFiles(files) {
+    const container = document.getElementById('audioFiles');
+    const controls = document.getElementById('transcriptionControls');
+    
+    if (files.length === 0) {
+        container.innerHTML = '<p style="color: #666;">No files uploaded yet.</p>';
+        controls.style.display = 'none';
+        return;
+    }
+    
+    // Show transcription controls if there are files
+    controls.style.display = 'block';
+    
+    container.innerHTML = files.map(file => `
+        <div style="border: 1px solid #ddd; border-radius: 5px; padding: 1rem; margin-bottom: 1rem;" data-file-id="${file.id}">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
+                <div style="display: flex; align-items: center;">
+                    ${!file.transcription ? `<input type="checkbox" class="file-checkbox" value="${file.id}" style="margin-right: 0.5rem;">` : ''}
+                    <h3 style="margin: 0; color: #333;">${file.original_filename}</h3>
+                    ${file.transcription ? `<span style="margin-left: 1rem; color: #28a745; font-size: 0.9rem; cursor: pointer; text-decoration: underline;" onclick="openAudioPlayer(${file.id})">🎵 Open audio player and full transcription</span>` : ''}
+                </div>
+                <div>
+                    ${file.status === 'ready' && !file.transcription ? 
+                        `<button onclick="transcribeFile(${file.id})" class="btn" style="font-size: 0.8rem; padding: 0.25rem 0.5rem;">Transcribe</button>` : ''}
+                    ${file.status === 'failed' ? 
+                        `<button onclick="retranscribeFile(${file.id})" class="btn" style="font-size: 0.8rem; padding: 0.25rem 0.5rem;">Retry</button>` : ''}
+                    ${file.status === 'processing' ?
+                        `<span style="color: #f93; font-size: 0.8rem; font-weight: bold;">⏳ Processing...</span>` : ''}
+                    ${file.transcription ? `<span style="color: #28a745; font-size: 0.8rem; font-weight: bold;">✓ Transcribed</span>` : ''}
+                </div>
+            </div>
+            <p style="color: #666; font-size: 0.9rem;">Status: <span style="color: ${getStatusColor(file.status)}">${file.status}</span></p>
+            <p style="color: #666; font-size: 0.9rem;">Uploaded: ${new Date(file.created_at).toLocaleString()}</p>
+        </div>
+    `).join('');
+}
+
+function getStatusColor(status) {
+    switch(status) {
+        case 'ready': return '#007cba';
+        case 'processing': return '#f93';
+        case 'completed': return '#3c3';
+        case 'failed': return '#c33';
+        default: return '#666';
+    }
+}
+
+// Transcription controls
+function setupTranscriptionControls() {
+    document.getElementById('transcribeSelectedBtn').addEventListener('click', transcribeSelected);
+    document.getElementById('transcribeAllBtn').addEventListener('click', transcribeAll);
+    document.getElementById('selectAllBtn').addEventListener('click', selectAll);
+    document.getElementById('deselectAllBtn').addEventListener('click', deselectAll);
+}
+
+function selectAll() {
+    document.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = true);
+}
+
+function deselectAll() {
+    document.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = false);
+}
+
+function getSelectedFileIds() {
+    return Array.from(document.querySelectorAll('.file-checkbox:checked')).map(cb => parseInt(cb.value));
+}
+
+function openAudioPlayer(fileId) {
+    window.location.href = `/audio-player/${fileId}/`;
+}
+
+async function transcribeSelected() {
+    const selectedIds = getSelectedFileIds();
+    if (selectedIds.length === 0) {
+        alert('Please select files to transcribe.');
+        return;
+    }
+    
+    const transcribeBtn = document.getElementById('transcribeSelectedBtn');
+    const originalText = transcribeBtn.textContent;
+    transcribeBtn.textContent = 'Processing...';
+    transcribeBtn.disabled = true;
+    
+    try {
+        for (const fileId of selectedIds) {
+            await transcribeFile(fileId);
+        }
+        
+        // Start polling for status updates
+        startPollingForUpdates();
+        
+    } finally {
+        transcribeBtn.textContent = originalText;
+        transcribeBtn.disabled = false;
+    }
+}
+
+async function transcribeAll() {
+    const eligibleFiles = uploadedFiles.filter(file => 
+        file.status === 'ready' && !file.transcription
+    );
+    
+    if (eligibleFiles.length === 0) {
+        alert('No files ready for transcription.');
+        return;
+    }
+    
+    const transcribeBtn = document.getElementById('transcribeAllBtn');
+    const originalText = transcribeBtn.textContent;
+    transcribeBtn.textContent = 'Processing...';
+    transcribeBtn.disabled = true;
+    
+    try {
+        for (const file of eligibleFiles) {
+            await transcribeFile(file.id);
+        }
+        
+        // Start polling for status updates
+        startPollingForUpdates();
+        
+    } finally {
+        transcribeBtn.textContent = originalText;
+        transcribeBtn.disabled = false;
+    }
+}
+
+async function transcribeFile(fileId) {
+    try {
+        const response = await fetch(`/api/v1/transcription/files/${fileId}/retranscribe/`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Token ' + localStorage.getItem('authToken'),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ language: document.getElementById('language').value || 'auto' })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.error(`Failed to transcribe file ${fileId}:`, errorData);
+            throw new Error(errorData.error || 'Transcription failed');
+        }
+        
+        const result = await response.json();
+        console.log(`Transcription started for file ${fileId}:`, result);
+        return result;
+        
+    } catch (error) {
+        console.error(`Error transcribing file ${fileId}:`, error);
+        alert(`Error transcribing file: ${error.message}`);
+        throw error;
+    }
+}
+
+async function retranscribeFile(fileId) {
+    try {
+        await transcribeFile(fileId);
+        startPollingForUpdates();
+    } catch (error) {
+        // Error already handled in transcribeFile
+    }
+}
+
+// Real-time polling for status updates
+let pollingInterval = null;
+
+function startPollingForUpdates() {
+    // Clear any existing polling
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+    }
+    
+    // Poll every 2 seconds for updates
+    pollingInterval = setInterval(async () => {
+        await loadAudioFiles();
+        
+        // Stop polling if no files are processing
+        const processingFiles = uploadedFiles.filter(file => file.status === 'processing');
+        if (processingFiles.length === 0) {
+            clearInterval(pollingInterval);
+            pollingInterval = null;
+        }
+    }, 2000);
+}
+
+function stopPolling() {
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+    }
+}
+
+// Initialize everything
+document.addEventListener('DOMContentLoaded', function() {
+    setupFileUpload();
+    setupUploadControls();
+    setupTranscriptionControls();
+    loadAudioFiles();
+    
+    // Check for processing files and start polling if needed
+    setTimeout(() => {
+        const processingFiles = uploadedFiles.filter(file => file.status === 'processing');
+        if (processingFiles.length > 0) {
+            startPollingForUpdates();
+        }
+    }, 1000);
+});
+
+// Clean up polling when page unloads
+window.addEventListener('beforeunload', function() {
+    stopPolling();
+});
+</script>
+{% endblock %}

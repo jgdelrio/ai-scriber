@@ -1,0 +1,11 @@
+-r base.txt
+
+# Testing framework
+pytest>=7.0.0
+pytest-django>=4.5.0
+pytest-cov>=4.0.0
+pytest-mock>=3.11.0
+factory-boy>=3.2.0
+
+# Test data
+Faker>=19.0.0
