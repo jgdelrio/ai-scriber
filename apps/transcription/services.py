@@ -173,8 +173,8 @@ class TranscriptionService:
                 f"Successfully transcribed audio file {audio_file_id} in {processing_time:.2f}s"
             )
             
-            # Attempt speaker detection if service is available
-            self._process_speaker_detection(transcription)
+            # Start speaker detection in background if service is available
+            self._start_background_speaker_detection(transcription)
             
             return transcription
 
@@ -560,8 +560,16 @@ class TranscriptionService:
     
     def _needs_conversion(self, audio_file):
         """Check if audio file needs conversion to MP3."""
-        file_extension = audio_file.original_filename.split('.')[-1].lower()
-        return file_extension not in self.openai_native_formats
+        # If force MP3 conversion is enabled, files should already be in MP3 format
+        if getattr(settings, 'FORCE_MP3_CONVERSION', True):
+            # Check actual stored file extension, not original filename
+            stored_filename = audio_file.file.name
+            stored_extension = stored_filename.split('.')[-1].lower()
+            return stored_extension not in self.openai_native_formats
+        else:
+            # Use original logic for backward compatibility
+            file_extension = audio_file.original_filename.split('.')[-1].lower()
+            return file_extension not in self.openai_native_formats
     
     def _convert_to_mp3(self, audio_file):
         """
@@ -869,18 +877,15 @@ class TranscriptionService:
             logger.warning(f"Pydub fallback also failed: {str(e)}, using target")
             return target_split_ms
     
-    def _process_speaker_detection(self, transcription):
-        """Process speaker detection for the completed transcription."""
+    def _start_background_speaker_detection(self, transcription):
+        """Start speaker detection in background for the completed transcription."""
         try:
-            from .speaker_detection import speaker_detection_service
-            
-            if not speaker_detection_service.is_enabled():
-                logger.debug("Speaker detection service not enabled, skipping")
-                return
-            
-            logger.info(f"Processing speaker detection for transcription {transcription.id}")
-            
-            # Prepare transcription data for speaker detection
+            from .speaker_detection import speaker_detection_service, _save_debug_data
+            from .tasks import process_speaker_detection_async
+
+            # Save debug data before starting speaker detection
+
+            # Prepare transcription data for debugging
             words_data = []
             for word in transcription.words.all():
                 words_data.append({
@@ -890,7 +895,7 @@ class TranscriptionService:
                     'confidence': word.confidence_score or 1.0,
                     'word_index': word.word_index
                 })
-            
+
             segments_data = []
             for segment in transcription.segments.all():
                 segments_data.append({
@@ -899,8 +904,8 @@ class TranscriptionService:
                     'text': segment.text,
                     'confidence': segment.confidence_score or 0.95
                 })
-            
-            transcription_data = {
+
+            payload = {
                 'text': transcription.text,
                 'language': transcription.language,
                 'confidence_score': transcription.confidence_score or 0.95,
@@ -908,27 +913,26 @@ class TranscriptionService:
                 'words': words_data,
                 'segments': segments_data
             }
+
+            _save_debug_data(transcription.audio_file, payload)
             
-            # Send to speaker detection service
-            speaker_result = speaker_detection_service.detect_speakers(
-                transcription.audio_file, 
-                transcription_data
-            )
+            if not speaker_detection_service.is_enabled():
+                logger.debug("Speaker detection service not enabled, setting status to unavailable")
+                transcription.speaker_detection_status = "unavailable"
+                transcription.save()
+                return
             
-            if speaker_result:
-                # Update transcription with speaker information
-                success = speaker_detection_service.update_transcription_with_speakers(
-                    transcription, speaker_result
-                )
-                
-                if success:
-                    logger.info(f"✅ Successfully updated transcription {transcription.id} with speaker detection")
-                else:
-                    logger.warning(f"Failed to update transcription {transcription.id} with speaker data")
-            else:
-                logger.warning(f"Speaker detection failed for transcription {transcription.id}")
-                
+            logger.info(f"Starting background speaker detection for transcription {transcription.id}")
+            
+            # Start the background task
+            process_speaker_detection_async(transcription.id)
+            
         except Exception as e:
-            logger.error(f"Error in speaker detection processing: {str(e)}")
-            # Don't fail the transcription if speaker detection fails
-            logger.exception("Full traceback for speaker detection error:")
+            logger.error(f"Error starting background speaker detection: {str(e)}")
+            # Set status to failed if we can't start the background task
+            try:
+                transcription.speaker_detection_status = "failed"
+                transcription.save()
+            except:
+                pass  # Don't fail if we can't update status
+            logger.exception("Full traceback for background task startup error:")

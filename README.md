@@ -249,7 +249,7 @@ AI Scriber supports optional integration with external speaker detection service
 
 **API Integration:**
 - `GET /healthcheck` - Service health check
-- `POST /speaker-detection` - Process audio file with timestamps
+- `POST /speaker-identification` - Process audio file with timestamps
 
 ---
 

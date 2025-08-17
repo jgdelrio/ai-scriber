@@ -205,11 +205,28 @@ def audio_player(request, file_id):
                         "start": word.start_time,
                         "end": word.end_time,
                         "index": word.word_index,
+                        "speaker_id": word.speaker_id,
                     }
                     for word in words
                 ]
         except Transcription.DoesNotExist:
             pass
+
+        # Get speakers data if available
+        speakers_data = []
+        if transcription:
+            speakers = transcription.speakers.all()
+            speakers_data = [
+                {
+                    "speaker_id": speaker.speaker_id,
+                    "speaker_label": speaker.speaker_label,
+                    "speaker_name": speaker.speaker_name,
+                    "confidence_score": speaker.confidence_score,
+                    "total_speaking_time": speaker.total_speaking_time,
+                    "word_count": speaker.word_count,
+                }
+                for speaker in speakers
+            ]
 
         return render(
             request,
@@ -218,6 +235,7 @@ def audio_player(request, file_id):
                 "audio_file": audio_file,
                 "transcription": transcription,
                 "word_timestamps_json": json.dumps(word_timestamps),
+                "speakers_json": json.dumps(speakers_data),
                 "user": request.user,
             },
         )

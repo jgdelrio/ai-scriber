@@ -18,6 +18,16 @@ urlpatterns = [
         name="update_transcription",
     ),
     path(
+        "files/<int:audio_file_id>/update-speaker-names/",
+        views.update_speaker_names,
+        name="update_speaker_names",
+    ),
+    path(
+        "files/<int:audio_file_id>/add-speaker/",
+        views.add_speaker,
+        name="add_speaker",
+    ),
+    path(
         "files/<int:audio_file_id>/transcription/",
         views.transcription_by_audio_file,
         name="transcription_by_audio_file",
