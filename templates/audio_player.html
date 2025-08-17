@@ -48,6 +48,9 @@
             <h2 style="color: #333; margin: 0;">Transcription</h2>
             {% if transcription %}
             <div style="display: flex; align-items: center; gap: 1rem;">
+                <button id="speakerUpdateModeBtn" class="btn" style="font-size: 0.8rem; padding: 0.4rem 0.8rem; background: #007cba;">
+                    🔄 Update All Speakers
+                </button>
                 <span id="autoSaveStatus" style="color: #666; font-size: 0.9rem;">Auto-save enabled</span>
                 <span id="saveIndicator" style="color: #28a745; font-size: 0.9rem; display: none;">✅ Saved</span>
             </div>
@@ -67,6 +70,16 @@
         {% if not transcription %}
         <p style="color: #666;">No transcription available for this file.</p>
         {% endif %}
+    </div>
+</div>
+
+<!-- Context Menu for adding speakers -->
+<div id="contextMenu" style="display: none; position: fixed; background: white; border: 1px solid #ccc; border-radius: 5px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); z-index: 1000; padding: 0; min-width: 180px;">
+    <div class="context-menu-item" onclick="addNewSpeakerAtPosition()" style="padding: 10px 15px; cursor: pointer; border-bottom: 1px solid #eee;">
+        👤 Add New Speaker Here
+    </div>
+    <div class="context-menu-item" onclick="splitSpeakerAtPosition()" style="padding: 10px 15px; cursor: pointer;">
+        ✂️ Split Speaker Section
     </div>
 </div>
 
@@ -159,6 +172,45 @@ body.dark-mode .unsaved-word {
     border-color: #f39c12 !important;
 }
 
+/* Dark mode styles for speaker sections */
+body.dark-mode .speaker-section {
+    background-color: #2d2d2d !important;
+    border-left-color: #555 !important;
+    color: #e0e0e0 !important;
+}
+
+body.dark-mode .speaker-label {
+    color: #e0e0e0 !important;
+}
+
+body.dark-mode .speaker-words {
+    color: #e0e0e0 !important;
+}
+
+body.dark-mode .editable-word:hover {
+    background-color: #3d3d3d !important;
+}
+
+body.dark-mode .editable-word:focus {
+    background-color: #1a4c6b !important;
+    outline-color: #4fc3f7 !important;
+}
+
+/* Dark mode styles for editable speaker names */
+body.dark-mode .editable-speaker-name {
+    background-color: rgba(255,255,255,0.1) !important;
+    color: #e0e0e0 !important;
+}
+
+body.dark-mode .editable-speaker-name:hover {
+    background-color: rgba(255,255,255,0.15) !important;
+}
+
+body.dark-mode .editable-speaker-name:focus {
+    background-color: rgba(79, 195, 247, 0.2) !important;
+    outline-color: #4fc3f7 !important;
+}
+
 /* Dark Mode Toggle Switch */
 .dark-mode-toggle {
     position: relative;
@@ -212,6 +264,26 @@ body.dark-mode .slider {
 body.dark-mode input:checked + .slider {
     background-color: #4fc3f7;
 }
+
+/* Context Menu Styles */
+.context-menu-item:hover {
+    background-color: #f0f0f0;
+}
+
+body.dark-mode #contextMenu {
+    background-color: #2d2d2d !important;
+    border-color: #555 !important;
+    color: #e0e0e0 !important;
+}
+
+body.dark-mode .context-menu-item {
+    border-color: #555 !important;
+    color: #e0e0e0 !important;
+}
+
+body.dark-mode .context-menu-item:hover {
+    background-color: #3d3d3d !important;
+}
 </style>
 
 <script>
@@ -235,6 +307,11 @@ function initDarkMode() {
             document.body.classList.remove('dark-mode');
             localStorage.setItem('darkMode', 'false');
         }
+        
+        // Refresh speaker colors when dark mode changes
+        if (speakersData && speakersData.length > 0) {
+            createEditableTranscription();
+        }
     });
 }
 
@@ -250,10 +327,18 @@ const transcriptionText = document.getElementById('transcriptionText');
 // Word timestamps data from server
 let wordTimestamps = {{ word_timestamps_json|safe }};
 let originalText = "{% if transcription %}{{ transcription.text|escapejs }}{% endif %}";
+let speakerSeparatedText = "{% if transcription %}{{ transcription.speaker_separated_text|escapejs }}{% endif %}";
+let speakersData = {{ speakers_json|safe }};
 let isPlaying = false;
 let hasUnsavedChanges = false;
 let autoSaveInterval = null;
 let currentEditingWord = null;
+
+// Speaker editing variables
+let speakerNameChanges = {};
+let updateAllSpeakers = true; // Default to updating all speakers
+let contextMenu = null;
+let contextMenuPosition = null;
 
 // Audio event listeners
 audioPlayer.addEventListener('loadedmetadata', function() {
@@ -340,29 +425,38 @@ function updateTranscriptionHighlight(currentTime) {
     });
 }
 
-// Create editable word elements
+// Create editable word elements with speaker support
 function createEditableTranscription() {
     const container = document.getElementById('transcriptionContainer');
     if (!container || !wordTimestamps || wordTimestamps.length === 0) {
         if (container) {
-            container.innerHTML = originalText;
+            // Show speaker-separated text if available, otherwise original text
+            container.innerHTML = speakerSeparatedText || originalText;
         }
         return;
     }
     
-    const wordElements = wordTimestamps.map((wordData, index) => {
-        return `<span class="editable-word" 
-                      data-index="${index}" 
-                      data-original="${wordData.word}"
-                      contenteditable="true"
-                      spellcheck="false"
-                      style="cursor: text; padding: 0.1rem; margin: 0.1rem; border-radius: 3px; display: inline-block;"
-                      onblur="handleWordEdit(${index}, this)"
-                      onkeydown="handleWordKeydown(event, ${index})"
-                      onfocus="handleWordFocus(${index})">${wordData.word}</span>`;
-    }).join(' ');
+    // Check if we have speaker information
+    const hasSpeakers = speakersData && speakersData.length > 0;
     
-    container.innerHTML = wordElements;
+    if (hasSpeakers) {
+        container.innerHTML = createSpeakerSeparatedView();
+    } else {
+        // Original single-speaker view
+        const wordElements = wordTimestamps.map((wordData, index) => {
+            return `<span class="editable-word" 
+                          data-index="${index}" 
+                          data-original="${wordData.word}"
+                          contenteditable="true"
+                          spellcheck="false"
+                          style="cursor: text; padding: 0.1rem; margin: 0.1rem; border-radius: 3px; display: inline-block;"
+                          onblur="handleWordEdit(${index}, this)"
+                          onkeydown="handleWordKeydown(event, ${index})"
+                          onfocus="handleWordFocus(${index})">${wordData.word}</span>`;
+        }).join(' ');
+        
+        container.innerHTML = wordElements;
+    }
     
     // Add CSS styles
     if (!document.getElementById('transcriptionStyles')) {
@@ -387,8 +481,553 @@ function createEditableTranscription() {
                 background-color: #fff3cd;
                 border: 1px dashed #ffc107;
             }
+            .speaker-section {
+                margin-bottom: 1.5rem;
+                padding: 0.5rem;
+                border-left: 3px solid #ddd;
+                background-color: #f9f9f9;
+                border-radius: 5px;
+            }
+            .speaker-label {
+                font-weight: bold;
+                font-size: 1rem;
+                margin-bottom: 0.5rem;
+            }
+            .speaker-words {
+                margin-left: 1rem;
+                line-height: 1.8;
+            }
+            body.dark-mode .speaker-section {
+                background-color: #2d2d2d !important;
+                border-left-color: #555 !important;
+                color: #e0e0e0 !important;
+            }
+            body.dark-mode .speaker-label {
+                color: #e0e0e0 !important;
+            }
+            body.dark-mode .speaker-words {
+                color: #e0e0e0 !important;
+            }
         `;
         document.head.appendChild(style);
+    }
+}
+
+// Create speaker-separated view with editable words
+function createSpeakerSeparatedView() {
+    if (!wordTimestamps || wordTimestamps.length === 0) {
+        return speakerSeparatedText || originalText;
+    }
+    
+    let html = '';
+    let currentSpeaker = null;
+    let speakerSectionWords = [];
+    
+    for (let index = 0; index < wordTimestamps.length; index++) {
+        const wordData = wordTimestamps[index];
+        const speakerId = wordData.speaker_id;
+        
+        // Get speaker display name
+        const speaker = speakersData.find(s => s.speaker_id === speakerId);
+        const speakerName = speaker ? (speaker.speaker_name || speaker.speaker_label || speakerId) : 'Unknown Speaker';
+        
+        // If speaker changed, finalize previous section
+        if (currentSpeaker !== null && currentSpeaker !== speakerName) {
+            if (speakerSectionWords.length > 0) {
+                html += `</div></div>`; // Close previous speaker section
+            }
+            speakerSectionWords = [];
+        }
+        
+        // Start new speaker section if needed
+        if (currentSpeaker !== speakerName) {
+            currentSpeaker = speakerName;
+            const speakerColor = getSpeakerColor(speakerId);
+            html += `<div class="speaker-section" style="margin-bottom: 1rem;">
+                       <div class="speaker-label" style="font-weight: bold; color: ${speakerColor}; margin-bottom: 0.5rem;">
+                         <span class="editable-speaker-name" 
+                               data-speaker-id="${speakerId}" 
+                               data-original-name="${speakerName}"
+                               contenteditable="true"
+                               spellcheck="false"
+                               style="cursor: text; padding: 0.2rem 0.4rem; border-radius: 3px; display: inline-block; background-color: rgba(0,0,0,0.05);"
+                               onblur="handleSpeakerNameEdit('${speakerId}', this)"
+                               onkeydown="handleSpeakerNameKeydown(event)"
+                               onfocus="handleSpeakerNameFocus(this)">${speakerName}</span>:
+                       </div>
+                       <div class="speaker-words" style="margin-left: 1rem;">`;
+        }
+        
+        // Add editable word
+        html += `<span class="editable-word speaker-word" 
+                       data-index="${index}" 
+                       data-original="${wordData.word}"
+                       data-speaker-id="${speakerId}"
+                       contenteditable="true"
+                       spellcheck="false"
+                       style="cursor: text; padding: 0.1rem; margin: 0.1rem; border-radius: 3px; display: inline-block;"
+                       onblur="handleWordEdit(${index}, this)"
+                       onkeydown="handleWordKeydown(event, ${index})"
+                       onfocus="handleWordFocus(${index})">${wordData.word}</span>`;
+        
+        speakerSectionWords.push(wordData);
+    }
+    
+    // Close final speaker section
+    if (speakerSectionWords.length > 0) {
+        html += `</div></div>`;
+    }
+    
+    return html;
+}
+
+// Get consistent color for each speaker (with dark mode support)
+function getSpeakerColor(speakerId) {
+    const isDarkMode = document.body.classList.contains('dark-mode');
+    
+    const lightColors = ['#007cba', '#28a745', '#dc3545', '#ffc107', '#6f42c1', '#fd7e14', '#20c997'];
+    const darkColors = ['#4fc3f7', '#66bb6a', '#ef5350', '#ffeb3b', '#ab47bc', '#ff8a65', '#4dd0e1'];
+    
+    const colors = isDarkMode ? darkColors : lightColors;
+    const index = speakerId ? speakerId.charCodeAt(speakerId.length - 1) % colors.length : 0;
+    return colors[index];
+}
+
+// Speaker name editing functions
+function initSpeakerUpdateModeToggle() {
+    const toggleBtn = document.getElementById('speakerUpdateModeBtn');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', function() {
+            updateAllSpeakers = !updateAllSpeakers;
+            updateToggleButtonText();
+        });
+        updateToggleButtonText();
+    }
+}
+
+function updateToggleButtonText() {
+    const toggleBtn = document.getElementById('speakerUpdateModeBtn');
+    if (toggleBtn) {
+        if (updateAllSpeakers) {
+            toggleBtn.innerHTML = '🔄 Update All Speakers';
+            toggleBtn.style.background = '#007cba';
+            toggleBtn.title = 'Currently: Updates all occurrences of speaker name. Click to change to update only current speaker.';
+        } else {
+            toggleBtn.innerHTML = '📝 Update Current Speaker';
+            toggleBtn.style.background = '#28a745';
+            toggleBtn.title = 'Currently: Updates only the current speaker occurrence. Click to change to update all speakers.';
+        }
+    }
+}
+
+function handleSpeakerNameFocus(element) {
+    element.style.backgroundColor = 'rgba(0, 123, 186, 0.1)';
+}
+
+function handleSpeakerNameKeydown(event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        event.target.blur();
+    }
+}
+
+function handleSpeakerNameEdit(speakerId, element) {
+    const newName = element.textContent.trim();
+    const originalName = element.getAttribute('data-original-name');
+    
+    element.style.backgroundColor = 'rgba(0,0,0,0.05)';
+    
+    if (newName !== originalName && newName !== '') {
+        if (updateAllSpeakers) {
+            // Store the change for all occurrences
+            speakerNameChanges[speakerId] = newName;
+            
+            // Update all occurrences of this speaker name immediately
+            updateAllSpeakerOccurrences(speakerId, newName);
+            
+            // Mark all occurrences as changed
+            document.querySelectorAll(`[data-speaker-id="${speakerId}"].editable-speaker-name`).forEach(el => {
+                el.style.backgroundColor = 'rgba(255, 193, 7, 0.2)';
+            });
+        } else {
+            // Only update this specific occurrence
+            element.setAttribute('data-original-name', newName);
+            element.style.backgroundColor = 'rgba(255, 193, 7, 0.2)';
+            
+            // Create a unique key for this specific element
+            const elementIndex = Array.from(document.querySelectorAll(`[data-speaker-id="${speakerId}"].editable-speaker-name`)).indexOf(element);
+            const uniqueKey = `${speakerId}_${elementIndex}`;
+            speakerNameChanges[uniqueKey] = { speakerId, newName, elementIndex };
+        }
+        
+        saveSpeakerNameChanges();
+    } else if (newName === '') {
+        // Don't allow empty names, revert
+        element.textContent = originalName;
+    }
+}
+
+function updateAllSpeakerOccurrences(speakerId, newName) {
+    // Update all speaker name elements for this speaker
+    const speakerElements = document.querySelectorAll(`[data-speaker-id="${speakerId}"]`);
+    speakerElements.forEach(element => {
+        if (element.classList.contains('editable-speaker-name')) {
+            element.textContent = newName;
+            element.setAttribute('data-original-name', newName);
+        }
+    });
+    
+    // Update the speakers data
+    if (speakersData) {
+        const speaker = speakersData.find(s => s.speaker_id === speakerId);
+        if (speaker) {
+            speaker.speaker_name = newName;
+        }
+    }
+}
+
+async function saveSpeakerNameChanges() {
+    if (Object.keys(speakerNameChanges).length === 0) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/v1/transcription/files/{{ audio_file.id }}/update-speaker-names/`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Token ' + localStorage.getItem('authToken') || '{{ csrf_token }}',
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                speaker_names: speakerNameChanges,
+                update_all: updateAllSpeakers
+            })
+        });
+        
+        if (response.ok) {
+            // Clear the changes and update UI
+            speakerNameChanges = {};
+            
+            // Remove the yellow background from all speaker names
+            document.querySelectorAll('.editable-speaker-name').forEach(element => {
+                element.style.backgroundColor = 'rgba(0,0,0,0.05)';
+            });
+            
+            // Show success indicator briefly
+            showNotification('✅ Speaker names saved', 'success');
+            
+        } else {
+            throw new Error('Failed to save speaker names');
+        }
+    } catch (error) {
+        console.error('Error saving speaker names:', error);
+        showNotification('❌ Failed to save speaker names', 'error');
+    }
+}
+
+function showNotification(message, type = 'info') {
+    const indicator = document.createElement('span');
+    indicator.textContent = message;
+    
+    const bgColor = type === 'success' ? '#28a745' : type === 'error' ? '#dc3545' : '#007cba';
+    indicator.style.cssText = `position: fixed; top: 20px; right: 20px; background: ${bgColor}; color: white; padding: 0.5rem 1rem; border-radius: 5px; z-index: 1000; font-size: 0.9rem; box-shadow: 0 2px 10px rgba(0,0,0,0.2);`;
+    
+    document.body.appendChild(indicator);
+    
+    const duration = type === 'error' ? 5000 : 3000;
+    setTimeout(() => {
+        if (document.body.contains(indicator)) {
+            document.body.removeChild(indicator);
+        }
+    }, duration);
+}
+
+// Context menu functions
+function initContextMenu() {
+    const transcriptionContainer = document.getElementById('transcriptionContainer');
+    if (!transcriptionContainer) return;
+
+    // Add right-click event listener to transcription container
+    transcriptionContainer.addEventListener('contextmenu', function(e) {
+        // Only show context menu if we have speaker data
+        if (!speakersData || speakersData.length === 0) {
+            return;
+        }
+
+        e.preventDefault();
+        
+        // Store the position and target element
+        contextMenuPosition = {
+            x: e.clientX,
+            y: e.clientY,
+            target: e.target
+        };
+        
+        showContextMenu(e.clientX, e.clientY);
+    });
+
+    // Hide context menu on click elsewhere
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('#contextMenu')) {
+            hideContextMenu();
+        }
+    });
+
+    // Hide context menu on scroll
+    document.addEventListener('scroll', hideContextMenu);
+}
+
+function showContextMenu(x, y) {
+    const contextMenu = document.getElementById('contextMenu');
+    if (!contextMenu) return;
+
+    contextMenu.style.display = 'block';
+    contextMenu.style.left = x + 'px';
+    contextMenu.style.top = y + 'px';
+
+    // Adjust position if menu goes off screen
+    const rect = contextMenu.getBoundingClientRect();
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+
+    if (rect.right > windowWidth) {
+        contextMenu.style.left = (x - rect.width) + 'px';
+    }
+    if (rect.bottom > windowHeight) {
+        contextMenu.style.top = (y - rect.height) + 'px';
+    }
+}
+
+function hideContextMenu() {
+    const contextMenu = document.getElementById('contextMenu');
+    if (contextMenu) {
+        contextMenu.style.display = 'none';
+    }
+    contextMenuPosition = null;
+}
+
+function addNewSpeakerAtPosition() {
+    if (!contextMenuPosition || !wordTimestamps) {
+        hideContextMenu();
+        return;
+    }
+
+    const target = contextMenuPosition.target;
+    
+    // Find the word index where we want to split
+    let wordIndex = -1;
+    
+    if (target.classList.contains('editable-word')) {
+        wordIndex = parseInt(target.getAttribute('data-index'));
+    } else {
+        // If clicked on speaker section or between words, find the closest word
+        const allWords = document.querySelectorAll('.editable-word');
+        for (let i = 0; i < allWords.length; i++) {
+            const wordRect = allWords[i].getBoundingClientRect();
+            if (contextMenuPosition.y <= wordRect.bottom) {
+                wordIndex = i;
+                break;
+            }
+        }
+    }
+
+    if (wordIndex === -1) {
+        showNotification('Could not determine position for new speaker', 'error');
+        hideContextMenu();
+        return;
+    }
+
+    const existingSpeakerNames = speakersData.map(s => s.speaker_name || s.speaker_label || s.speaker_id);
+    const suggestionText = existingSpeakerNames.length > 0 
+        ? `Enter speaker name (existing: ${existingSpeakerNames.join(', ')}):`
+        : 'Enter speaker name:';
+
+    const newSpeakerName = prompt(suggestionText, '');
+    if (!newSpeakerName || !newSpeakerName.trim()) {
+        hideContextMenu();
+        return;
+    }
+
+    const trimmedName = newSpeakerName.trim();
+    
+    // Check if this speaker name already exists
+    const existingSpeaker = speakersData.find(s => 
+        (s.speaker_name && s.speaker_name.toLowerCase() === trimmedName.toLowerCase()) ||
+        (s.speaker_label && s.speaker_label.toLowerCase() === trimmedName.toLowerCase())
+    );
+
+    let targetSpeakerId;
+    let isNewSpeaker = false;
+
+    if (existingSpeaker) {
+        // Use existing speaker ID
+        targetSpeakerId = existingSpeaker.speaker_id;
+        showNotification(`✅ Linking to existing speaker: ${trimmedName}`, 'success');
+    } else {
+        // Create new speaker ID
+        const existingSpeakerIds = speakersData.map(s => s.speaker_id);
+        let counter = existingSpeakerIds.length + 1;
+        targetSpeakerId = 'speaker_' + counter;
+        while (existingSpeakerIds.includes(targetSpeakerId)) {
+            counter++;
+            targetSpeakerId = 'speaker_' + counter;
+        }
+
+        // Add new speaker to speakers data
+        speakersData.push({
+            speaker_id: targetSpeakerId,
+            speaker_name: trimmedName,
+            speaker_label: trimmedName
+        });
+        
+        isNewSpeaker = true;
+        showNotification(`✅ Created new speaker: ${trimmedName}`, 'success');
+    }
+
+    // Update word timestamps to assign speaker ID from this position forward
+    // until we hit another speaker change or end of transcript
+    const currentSpeakerId = wordTimestamps[wordIndex]?.speaker_id;
+    for (let i = wordIndex; i < wordTimestamps.length; i++) {
+        if (wordTimestamps[i].speaker_id === currentSpeakerId) {
+            wordTimestamps[i].speaker_id = targetSpeakerId;
+        } else {
+            break; // Stop when we hit a different speaker
+        }
+    }
+
+    // Save the changes
+    saveNewSpeakerChanges(targetSpeakerId, trimmedName, wordIndex, isNewSpeaker);
+    
+    // Recreate the transcription view
+    createEditableTranscription();
+    
+    hideContextMenu();
+}
+
+function splitSpeakerAtPosition() {
+    if (!contextMenuPosition || !wordTimestamps) {
+        hideContextMenu();
+        return;
+    }
+
+    const target = contextMenuPosition.target;
+    let wordIndex = -1;
+    
+    if (target.classList.contains('editable-word')) {
+        wordIndex = parseInt(target.getAttribute('data-index'));
+    }
+
+    if (wordIndex === -1) {
+        showNotification('Could not determine position for speaker split', 'error');
+        hideContextMenu();
+        return;
+    }
+
+    const currentSpeakerId = wordTimestamps[wordIndex]?.speaker_id;
+    if (!currentSpeakerId) {
+        showNotification('No speaker information found at this position', 'error');
+        hideContextMenu();
+        return;
+    }
+
+    const existingSpeakerNames = speakersData.map(s => s.speaker_name || s.speaker_label || s.speaker_id);
+    const suggestionText = existingSpeakerNames.length > 0 
+        ? `Enter speaker name for split section (existing: ${existingSpeakerNames.join(', ')}):`
+        : 'Enter speaker name for split section:';
+
+    const newSpeakerName = prompt(suggestionText, '');
+    if (!newSpeakerName || !newSpeakerName.trim()) {
+        hideContextMenu();
+        return;
+    }
+
+    const trimmedName = newSpeakerName.trim();
+    
+    // Check if this speaker name already exists
+    const existingSpeaker = speakersData.find(s => 
+        (s.speaker_name && s.speaker_name.toLowerCase() === trimmedName.toLowerCase()) ||
+        (s.speaker_label && s.speaker_label.toLowerCase() === trimmedName.toLowerCase())
+    );
+
+    let targetSpeakerId;
+    let isNewSpeaker = false;
+
+    if (existingSpeaker) {
+        // Use existing speaker ID
+        targetSpeakerId = existingSpeaker.speaker_id;
+        showNotification(`✅ Linking split section to existing speaker: ${trimmedName}`, 'success');
+    } else {
+        // Create new speaker ID
+        const existingSpeakerIds = speakersData.map(s => s.speaker_id);
+        let newSpeakerId = currentSpeakerId + '_split';
+        let counter = 1;
+        while (existingSpeakerIds.includes(newSpeakerId)) {
+            counter++;
+            newSpeakerId = currentSpeakerId + '_split' + counter;
+        }
+        targetSpeakerId = newSpeakerId;
+
+        // Add new speaker to speakers data
+        speakersData.push({
+            speaker_id: targetSpeakerId,
+            speaker_name: trimmedName,
+            speaker_label: trimmedName
+        });
+        
+        isNewSpeaker = true;
+        showNotification(`✅ Created new speaker for split section: ${trimmedName}`, 'success');
+    }
+
+    // Update word timestamps to assign speaker ID from this position
+    // until we hit another speaker change or end of current speaker section
+    for (let i = wordIndex; i < wordTimestamps.length; i++) {
+        if (wordTimestamps[i].speaker_id === currentSpeakerId) {
+            wordTimestamps[i].speaker_id = targetSpeakerId;
+        } else {
+            break;
+        }
+    }
+
+    // Save the changes
+    saveNewSpeakerChanges(targetSpeakerId, trimmedName, wordIndex, isNewSpeaker);
+    
+    // Recreate the transcription view
+    createEditableTranscription();
+    
+    hideContextMenu();
+}
+
+async function saveNewSpeakerChanges(speakerId, speakerName, wordIndex, isNewSpeaker = false) {
+    try {
+        // Save the speaker changes and updated word timestamps
+        const response = await fetch(`/api/v1/transcription/files/{{ audio_file.id }}/add-speaker/`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Token ' + localStorage.getItem('authToken') || '{{ csrf_token }}',
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                speaker_id: speakerId,
+                speaker_name: speakerName,
+                word_timestamps: wordTimestamps,
+                split_position: wordIndex,
+                is_new_speaker: isNewSpeaker
+            })
+        });
+        
+        if (response.ok) {
+            const message = isNewSpeaker 
+                ? '✅ New speaker created and assigned successfully'
+                : '✅ Existing speaker assigned successfully';
+            console.log(message);
+        } else {
+            throw new Error('Failed to save speaker assignment');
+        }
+    } catch (error) {
+        console.error('Error saving speaker assignment:', error);
+        showNotification('❌ Failed to save speaker assignment', 'error');
     }
 }
 
@@ -553,6 +1192,12 @@ function stopAutoSave() {
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize dark mode
     initDarkMode();
+    
+    // Initialize speaker update mode toggle
+    initSpeakerUpdateModeToggle();
+    
+    // Initialize context menu
+    initContextMenu();
     
     // Create editable transcription
     createEditableTranscription();

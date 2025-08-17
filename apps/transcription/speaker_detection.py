@@ -1,16 +1,57 @@
 """
 Speaker detection service integration.
+
+Enables calling a 3rd party service that integrates the speaker detected identification in the transcription.
 """
 
 import logging
 import requests
 import tempfile
 import os
+import json
 from django.conf import settings
 from typing import Optional, Dict, Any
 from apps.core.exceptions import TranscriptionError
 
 logger = logging.getLogger(__name__)
+
+
+def _save_debug_data(audio_file, payload: Dict[str, Any]) -> None:
+    """
+    Save audio file and transcription data for debugging purposes.
+
+    Args:
+        audio_file: Django audio file object
+        payload: Dictionary containing transcription data
+    """
+    try:
+        # Create debug directory if it doesn't exist
+        debug_dir = os.path.join(settings.MEDIA_ROOT, 'detection_debug')
+        os.makedirs(debug_dir, exist_ok=True)
+
+        # Generate filename based on original audio filename
+        base_name = os.path.splitext(audio_file.original_filename)[0]
+        timestamp = str(int(audio_file.created_at.timestamp())) if hasattr(audio_file, 'created_at') else 'unknown'
+
+        # Save audio file copy using a new file handle
+        audio_debug_path = os.path.join(debug_dir, f"{base_name}_{timestamp}.mp3")
+        try:
+            # Open the Django file with a fresh context manager
+            with audio_file.file.open('rb') as source_file:
+                with open(audio_debug_path, 'wb') as debug_audio:
+                    debug_audio.write(source_file.read())
+        except Exception as file_error:
+            logger.warning(f"Could not save debug audio file: {str(file_error)}")
+
+        # Save transcription data as JSON
+        json_debug_path = os.path.join(debug_dir, f"{base_name}_{timestamp}.json")
+        with open(json_debug_path, 'w', encoding='utf-8') as debug_json:
+            json.dump(payload, debug_json, indent=2, ensure_ascii=False)
+
+        logger.info(f"Debug data saved: {audio_debug_path} and {json_debug_path}")
+
+    except Exception as err:
+        logger.warning(f"Failed to save debug data: {str(err)}")
 
 
 class SpeakerDetectionService:
@@ -52,8 +93,8 @@ class SpeakerDetectionService:
                 
             return is_healthy
             
-        except requests.exceptions.RequestException as e:
-            logger.warning(f"❌ Speaker detection service health check failed: {str(e)}")
+        except requests.exceptions.RequestException as err:
+            logger.warning(f"❌ Speaker detection service health check failed: {str(err)}")
             return False
     
     def detect_speakers(self, audio_file, transcription_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -88,23 +129,28 @@ class SpeakerDetectionService:
                 'words': transcription_data.get('words', []),
                 'segments': transcription_data.get('segments', [])
             }
-            
-            # Prepare multipart form data
-            files = {}
-            data = {'transcription': payload}
-            
-            # Add audio file
+
             with audio_file.file.open('rb') as f:
-                files['audio'] = (
-                    audio_file.original_filename,
-                    f.read(),
-                    'audio/mpeg'  # Default MIME type
-                )
-                
+                stored_filename = audio_file.file.name
+                stored_extension = stored_filename.split('.')[-1].lower()
+                mime_type = 'audio/mpeg' if stored_extension == 'mp3' else 'audio/mpeg'
+
+                files = {
+                    'audio': (
+                        audio_file.original_filename,
+                        f.read(),
+                        mime_type
+                    )
+                }
+
+                data = {
+                    'transcription_data': json.dumps(payload)  # ✅ Convert to string for form data
+                }
+
                 response = requests.post(
-                    f"{self.base_url}/speaker-detection",
+                    f"{self.base_url}/speaker-identification",
                     files=files,
-                    json=data,
+                    data=data,  # ✅ Use data instead of json - clean multipart/form-data
                     timeout=self.timeout
                 )
             
@@ -142,16 +188,28 @@ class SpeakerDetectionService:
             if not speaker_data or 'speakers' not in speaker_data:
                 logger.warning("No speaker data to process")
                 return False
-                
-            # Update the main transcription text with speaker labels
-            if 'speaker_separated_text' in speaker_data:
-                transcription.text = speaker_data['speaker_separated_text']
-                logger.info(f"Updated transcription text with {len(speaker_data['speakers'])} speakers")
+            
+            from .models import TranscriptionSegment, TranscriptionWord, Speaker
+            
+            # Create Speaker records
+            transcription.speakers.all().delete()  # Clear existing speakers
+            speakers_created = []
+            
+            for speaker_info in speaker_data.get('speakers', []):
+                speaker = Speaker.objects.create(
+                    transcription=transcription,
+                    speaker_id=speaker_info.get('speaker_id', ''),
+                    speaker_label=speaker_info.get('speaker_label', ''),
+                    confidence_score=speaker_info.get('confidence', 0.95),
+                    total_speaking_time=speaker_info.get('total_speaking_time', 0.0),
+                    word_count=speaker_info.get('word_count', 0)
+                )
+                speakers_created.append(speaker)
+            
+            logger.info(f"Created {len(speakers_created)} speaker records")
             
             # Update segments with speaker information if available
             if 'speaker_segments' in speaker_data:
-                from .models import TranscriptionSegment
-                
                 # Clear existing segments
                 TranscriptionSegment.objects.filter(transcription=transcription).delete()
                 
@@ -171,8 +229,6 @@ class SpeakerDetectionService:
             
             # Update word-level data with speaker information if available
             if 'speaker_words' in speaker_data:
-                from .models import TranscriptionWord
-                
                 # Update existing words with speaker information
                 for word_data in speaker_data['speaker_words']:
                     word_index = word_data.get('word_index')
@@ -184,7 +240,15 @@ class SpeakerDetectionService:
                             word_index=word_index
                         ).update(speaker_id=speaker_id)
             
+            # Generate and save speaker-separated text
+            transcription.speaker_separated_text = transcription.generate_speaker_separated_text()
+            
+            # Update main transcription text if provided (optional, preserves original)
+            if 'speaker_separated_text' in speaker_data:
+                transcription.speaker_separated_text = speaker_data['speaker_separated_text']
+            
             transcription.save()
+            logger.info(f"Updated transcription with {len(speakers_created)} speakers and speaker-separated text")
             return True
             
         except Exception as e:

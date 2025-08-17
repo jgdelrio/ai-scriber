@@ -618,6 +618,7 @@ function displayAudioFiles(files) {
                     ${file.status === 'processing' ?
                         `<span style="color: #f93; font-size: 0.8rem; font-weight: bold;" id="processing-status-${file.id}">⏳ Processing...</span>` : ''}
                     ${file.transcription ? `<span style="color: #28a745; font-size: 0.8rem; font-weight: bold;">✓ Transcribed</span>` : ''}
+                    ${file.transcription && file.transcription.speaker_detection_status ? getSpeakerDetectionBadge(file.transcription.speaker_detection_status) : ''}
                     <button onclick="deleteFile(${file.id}, '${file.original_filename.replace(/'/g, "\\'")}')" class="btn" style="font-size: 0.8rem; padding: 0.25rem 0.5rem; background: #dc3545; color: white; white-space: nowrap; min-width: auto;">🗑️ Delete</button>
                 </div>
             </div>
@@ -635,6 +636,17 @@ function getStatusColor(status) {
         case 'failed': return '#c33';
         default: return '#666';
     }
+}
+
+function getSpeakerDetectionBadge(status) {
+    const badges = {
+        'not_started': '<span style="color: #666; font-size: 0.7rem; margin-left: 0.5rem;">🔊 Speaker detection: Not started</span>',
+        'processing': '<span style="color: #f93; font-size: 0.7rem; margin-left: 0.5rem; font-weight: bold;">🔊 Speaker detection: Processing...</span>',
+        'completed': '<span style="color: #28a745; font-size: 0.7rem; margin-left: 0.5rem;">🔊 Speaker detection: ✓ Complete</span>',
+        'failed': '<span style="color: #c33; font-size: 0.7rem; margin-left: 0.5rem;">🔊 Speaker detection: ✗ Failed</span>',
+        'unavailable': '<span style="color: #999; font-size: 0.7rem; margin-left: 0.5rem;">🔊 Speaker detection: Service unavailable</span>'
+    };
+    return badges[status] || '';
 }
 
 // Transcription controls
@@ -673,13 +685,25 @@ async function downloadTranscription(fileId, filename) {
         if (response.ok) {
             const transcriptionData = await response.json();
             
+            // Use speaker-separated text if available, otherwise use original text
+            const transcriptionText = transcriptionData.speaker_separated_text || transcriptionData.text;
+            const speakerInfo = transcriptionData.speakers && transcriptionData.speakers.length > 0 
+                ? `\nSpeakers Detected: ${transcriptionData.speakers.length}\n` +
+                  transcriptionData.speakers.map(speaker => 
+                    `  - ${speaker.speaker_name || speaker.speaker_label || speaker.speaker_id}: ` +
+                    `${speaker.total_speaking_time ? speaker.total_speaking_time.toFixed(1) + 's' : 'N/A'} speaking time, ` +
+                    `${speaker.word_count || 0} words`
+                  ).join('\n')
+                : '';
+            
             // Create downloadable text content
             const textContent = `Transcription for: ${filename}\n` +
                                `Generated on: ${new Date().toLocaleString()}\n` +
                                `Language: ${transcriptionData.language || 'Auto-detected'}\n` +
                                `Confidence Score: ${transcriptionData.confidence_score ? (transcriptionData.confidence_score * 100).toFixed(1) + '%' : 'N/A'}\n` +
-                               `Processing Time: ${transcriptionData.processing_time ? transcriptionData.processing_time.toFixed(2) + 's' : 'N/A'}\n\n` +
-                               `--- TRANSCRIPTION ---\n\n${transcriptionData.text}`;
+                               `Processing Time: ${transcriptionData.processing_time ? transcriptionData.processing_time.toFixed(2) + 's' : 'N/A'}\n` +
+                               `Speaker Detection: ${transcriptionData.speaker_detection_status || 'not_started'}${speakerInfo}\n\n` +
+                               `--- TRANSCRIPTION ---\n\n${transcriptionText}`;
             
             // Create and trigger download
             const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
@@ -948,16 +972,20 @@ function startPollingForUpdates() {
         
         // Update processing status for long files
         const processingFiles = uploadedFiles.filter(file => file.status === 'processing');
+        const speakerProcessingFiles = uploadedFiles.filter(file => 
+            file.transcription && file.transcription.speaker_detection_status === 'processing'
+        );
+        
         processingFiles.forEach(file => {
             if (file.duration) {
                 updateProcessingStatus(file.id, file.duration);
             }
         });
         
-        console.log(`Polling: ${processingFiles.length} files still processing (${pollingCount} polls)`);
+        console.log(`Polling: ${processingFiles.length} files transcribing, ${speakerProcessingFiles.length} files speaker processing (${pollingCount} polls)`);
         
-        if (processingFiles.length === 0) {
-            console.log('All transcriptions completed, stopping polling');
+        if (processingFiles.length === 0 && speakerProcessingFiles.length === 0) {
+            console.log('All processing completed, stopping polling');
             clearInterval(pollingInterval);
             pollingInterval = null;
             pollingCount = 0;
@@ -984,7 +1012,10 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Check for processing files and start polling if needed
     setTimeout(() => {
         const processingFiles = uploadedFiles.filter(file => file.status === 'processing');
-        if (processingFiles.length > 0) {
+        const speakerProcessingFiles = uploadedFiles.filter(file => 
+            file.transcription && file.transcription.speaker_detection_status === 'processing'
+        );
+        if (processingFiles.length > 0 || speakerProcessingFiles.length > 0) {
             startPollingForUpdates();
         }
     }, 1000);

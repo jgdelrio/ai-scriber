@@ -157,6 +157,9 @@ OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 SPEAKER_DETECTION_HOST = os.environ.get('SPEAKER_DETECTION_HOST', '')
 SPEAKER_DETECTION_PORT = os.environ.get('SPEAKER_DETECTION_PORT', '')
 
+# Audio Processing settings
+FORCE_MP3_CONVERSION = os.environ.get('FORCE_MP3_CONVERSION', 'True').lower() in ('true', '1', 'yes', 'on')
+
 # Log API key status at startup
 logger = logging.getLogger(__name__)
 if OPENAI_API_KEY:
@@ -169,3 +172,9 @@ if SPEAKER_DETECTION_HOST and SPEAKER_DETECTION_PORT:
     logger.info(f"🔊 Speaker detection service configured at {SPEAKER_DETECTION_HOST}:{SPEAKER_DETECTION_PORT}")
 else:
     logger.info("ℹ️  Speaker detection service not configured - Transcriptions will not include speaker separation")
+
+# Log audio processing configuration
+if FORCE_MP3_CONVERSION:
+    logger.info("🎵 Force MP3 conversion enabled - All audio files will be converted to MP3 format")
+else:
+    logger.info("ℹ️  Force MP3 conversion disabled - Files will be processed in original format when possible")
