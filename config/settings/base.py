@@ -18,6 +18,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-change-me-in-production')
 
+# Service metadata
+SERVICE_NAME = "ai-scriber"
+SERVICE_VERSION = "1.0.0"
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
@@ -82,7 +86,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME', 'ai_scriber'),
+        'NAME': os.environ.get('DB_NAME', 'djangomain'),
         'USER': os.environ.get('DB_USER', 'postgres'),
         'PASSWORD': os.environ.get('DB_PASSWORD', ''),
         'HOST': os.environ.get('DB_HOST', 'localhost'),

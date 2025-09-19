@@ -282,6 +282,100 @@ docker build -t ai-scriber:latest .
 docker run -p 8080:8080 --env-file .env ai-scriber:latest
 ```
 
+### AWS Lambda Deployment
+
+AI Scriber can be deployed as an AWS Lambda function with RDS and S3 integration.
+
+#### Prerequisites
+- AWS RDS PostgreSQL instance
+- S3 bucket for file storage
+- Lambda function with proper IAM roles
+
+#### Environment Variables for Lambda
+```bash
+# Database (RDS)
+DB_NAME=djangomain
+DB_USER=postgres
+DB_PASSWORD=your-rds-password
+DB_HOST=your-rds-endpoint.amazonaws.com
+DB_PORT=5432
+
+# AWS Services
+AWS_REGION=eu-west-1
+AWS_S3_SCRIBER_BUCKET=ai-scriber
+SERVICE_NAME=ai-scriber
+SERVICE_VERSION=1.0.0
+
+# Django
+SECRET_KEY=your-production-secret-key
+DJANGO_SETTINGS_MODULE=config.settings.aws_lambda
+```
+
+#### Database Setup for Lambda
+
+1. **Run Migrations on RDS:**
+   ```bash
+   # Set environment variables for RDS connection
+   export DB_NAME=djangomain
+   export DB_USER=postgres
+   export DB_PASSWORD=your-rds-password
+   export DB_HOST=your-rds-endpoint.amazonaws.com
+   export DB_PORT=5432
+   export AWS_REGION=eu-west-1
+   
+   # Run migrations
+   uv run python manage.py migrate --settings=config.settings.aws_lambda
+   ```
+
+2. **Create Admin User for Lambda/RDS:**
+   ```bash
+   # Using environment variables from above
+   uv run python manage.py createsuperuser --settings=config.settings.aws_lambda
+   
+   # Or via Django shell
+   uv run python manage.py shell --settings=config.settings.aws_lambda
+   
+   # In shell:
+   from django.contrib.auth import get_user_model
+   User = get_user_model()
+   User.objects.create_superuser('admin', 'admin@example.com', 'secure-password')
+   ```
+
+#### Health Check Endpoints
+
+The Lambda deployment includes health check endpoints:
+- `GET /healthcheck/` - Basic health check
+- `GET /api/health/` - API health check
+
+**Example Response:**
+```json
+{
+  "status": "healthy",
+  "service": "ai-scriber",
+  "version": "1.0.0", 
+  "timestamp": "2025-01-15T10:30:00.123456Z",
+  "database": "healthy",
+  "environment": "lambda"
+}
+```
+
+#### Admin Access
+
+**Local Development:**
+- URL: `http://localhost:8080/admin/`
+- Create superuser: `uv run python manage.py createsuperuser`
+
+**Lambda Deployment:**
+- URL: `https://your-lambda-url.amazonaws.com/admin/`
+- Create superuser on RDS using the commands above
+
+#### Docker Build for Lambda
+
+```bash
+# Build Lambda-specific image
+docker build -f Dockerfile.lambda -t ai-scriber-lambda .
+```
+
 
 ## Contributing
 

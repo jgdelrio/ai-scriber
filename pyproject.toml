@@ -17,6 +17,7 @@ dependencies = [
     "python-dotenv>=1.1.1",
     "librosa>=0.11.0",
     "requests>=2.32.4",
+    "boto3>=1.40.23",
 ]
 
 [project.optional-dependencies]
@@ -30,6 +31,11 @@ dev = [
 prod = [
     "whitenoise>=6.5.0",
     "sentry-sdk>=1.28.0",
+]
+lambda = [
+    "django-storages>=1.14.0",
+    "awslambdaric>=2.0.0",
+    "mangum>=0.18.0",
 ]
 
 [dependency-groups]

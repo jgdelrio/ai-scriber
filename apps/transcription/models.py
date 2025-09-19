@@ -1,13 +1,29 @@
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.conf import settings
 from apps.core.utils import generate_unique_filename
+import boto3
+import logging
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
 
 def audio_upload_path(instance, filename):
     """Generate upload path for audio files."""
-    return f"audio/{instance.owner.id}/{generate_unique_filename(filename)}"
+    from django.conf import settings
+    
+    unique_filename = generate_unique_filename(filename)
+    
+    # Check if we're using the custom S3 storage (Lambda environment)
+    if hasattr(settings, 'DEFAULT_FILE_STORAGE') and 'DatePartitionedS3Storage' in settings.DEFAULT_FILE_STORAGE:
+        # For S3 with date partitioning, storage class handles the structure
+        # Just return user-specific filename
+        return f"user_{instance.owner.id}_{unique_filename}"
+    else:
+        # For local development, use the original folder structure
+        return f"audio/{instance.owner.id}/{unique_filename}"
 
 
 class AudioFile(models.Model):
@@ -36,6 +52,34 @@ class AudioFile(models.Model):
 
     def __str__(self):
         return f"{self.original_filename} - {self.owner.email}"
+    
+    def delete_s3_file(self):
+        """Delete the file from S3 storage."""
+        if not self.file:
+            return
+        
+        try:
+            # Check if we're using S3 storage
+            if hasattr(settings, 'AWS_STORAGE_BUCKET_NAME') and settings.AWS_STORAGE_BUCKET_NAME:
+                s3_client = boto3.client('s3', region_name=getattr(settings, 'AWS_S3_REGION_NAME', 'eu-west-1'))
+                
+                # Extract the S3 key from the file path
+                s3_key = self.file.name
+                if s3_key.startswith('/'):
+                    s3_key = s3_key[1:]  # Remove leading slash
+                
+                s3_client.delete_object(
+                    Bucket=settings.AWS_STORAGE_BUCKET_NAME,
+                    Key=s3_key
+                )
+                logger.info(f"Deleted S3 file: {s3_key}")
+        except Exception as e:
+            logger.error(f"Failed to delete S3 file {self.file.name}: {e}")
+    
+    def delete(self, *args, **kwargs):
+        """Override delete to clean up S3 files."""
+        self.delete_s3_file()
+        super().delete(*args, **kwargs)
 
 
 class Transcription(models.Model):
